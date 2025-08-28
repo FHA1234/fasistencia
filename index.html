@@ -18,9 +18,7 @@
            class="mx-auto h-20 w-auto select-none" alt="Logo Marcet">
       <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
 
-      <!-- ============ FORMULARIO ============ -->
       <form id="form" class="space-y-4">
-        <!-- Modalidad -->
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Modalidad</label>
           <select id="modalidad" name="modalidad" required
@@ -31,7 +29,6 @@
           </select>
         </div>
 
-        <!-- Curso (nacional) -->
         <div id="cursoBox" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1">Curso o Grupo</label>
           <select id="curso" name="curso" required disabled
@@ -40,7 +37,6 @@
           </select>
         </div>
 
-        <!-- Sistema (internacional) -->
         <div id="sistemaBox" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1">Sistema educativo</label>
           <select id="sistema" name="sistema" required disabled
@@ -49,7 +45,6 @@
           </select>
         </div>
 
-        <!-- Alumno -->
         <div id="alumnoBox" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1">Alumno</label>
           <select id="alumno" name="alumno" required disabled
@@ -58,7 +53,6 @@
           </select>
         </div>
 
-        <!-- Palabra clave -->
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Respuesta presencial</label>
           <input id="respuesta" name="respuesta" required
@@ -80,7 +74,6 @@
         </button>
       </form>
 
-      <!-- ======= CONFIRMACIÓN ======= -->
       <div id="ok" class="hidden text-center">
         <svg class="mx-auto h-20 w-20 text-brand mb-2 overflow-visible"
              fill="none" stroke="currentColor" stroke-width="1.6"
@@ -93,7 +86,6 @@
         <button id="cerrar" class="px-6 py-2 bg-brand text-white rounded-lg">Cerrar pestaña</button>
       </div>
 
-      <!-- Pie con versión centrada -->
       <div class="pt-2 border-t border-gray-100">
         <span id="rosterInfo" class="block w-full text-center text-[11px] text-gray-400"></span>
       </div>
@@ -101,6 +93,25 @@
   </div>
 
 <script>
+/* ====== BLOQUEO GLOBAL DE FLUSH (solo se permite si es admin real) ====== */
+(function(){
+  const realFetch = window.fetch.bind(window);
+  window.__adminIntent = false; // bandera: true solo cuando el usuario escribe @admin <clave>
+  window.fetch = (input, init={})=>{
+    try{
+      const url = typeof input === 'string' ? input : input.url;
+      if(url && url.includes('/.netlify/functions/flush') && !window.__adminIntent){
+        // bloqueamos cualquier flush no explícito
+        return Promise.resolve(new Response(
+          JSON.stringify({status:'IGNORED'}),
+          {status:200, headers:{'Content-Type':'application/json'}}
+        ));
+      }
+    }catch(e){}
+    return realFetch(input, init);
+  };
+})();
+
 /* ======= API helpers ======= */
 const API_BASE = '/.netlify/functions';
 async function apiGET(path){
@@ -145,7 +156,7 @@ let ROSTER = {};                // { GRUPO: [alumnos] }
 let gruposNac = [], gruposInt = [];
 const LS_KEY = 'rosterCacheV3';
 
-/* --- Normalizador robusto --- */
+/* --- Normalizador --- */
 function normalizaRoster(raw){
   const isObj = raw && typeof raw === 'object';
   if (isObj && raw.byGroup) {
@@ -199,7 +210,6 @@ function cargarGrupos(){
       usarRoster(normalizaRoster(cached.data));
     }
   }catch{}
-
   apiGET('/grupos')
     .then(raw=>{
       const info = normalizaRoster(raw);
@@ -262,11 +272,13 @@ function geoOk(){ return lat.value!=='' && lon.value!==''; }
 form.addEventListener('submit', async (e)=>{
   const pw = getAdminPassword(respuesta.value);
 
-  // 1) MODO ADMIN: si empieza por "@admin <clave>", NO fichamos; solo refrescamos lista
+  // 1) ADMIN: si empieza por "@admin <clave>", NO fichamos; solo flush permitido
   if (pw) {
     e.preventDefault();
     try {
+      window.__adminIntent = true;               // <-- permitir flush
       const r = await apiPOST('/flush', { pw });
+      window.__adminIntent = false;
       if (r && (r.status === 'OK' || r.status === 'flushed')) {
         alert('Lista actualizada');
         try { localStorage.removeItem(LS_KEY); } catch {}
@@ -276,6 +288,7 @@ form.addEventListener('submit', async (e)=>{
         alert('Error: ' + (r && r.error ? r.error : 'No se pudo actualizar'));
       }
     } catch {
+      window.__adminIntent = false;
       alert('Error al actualizar');
     }
     return; // NO registrar asistencia
