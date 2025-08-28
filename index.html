@@ -82,25 +82,27 @@
 
       <!-- ======= CONFIRMACIÓN ======= -->
       <div id="ok" class="hidden text-center">
-        <svg class="mx-auto h-16 w-16 text-brand mb-2" fill="none"
-             stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+        <svg class="mx-auto h-20 w-20 text-brand mb-2 overflow-visible"
+             fill="none" stroke="currentColor" stroke-width="1.6"
+             viewBox="-2 -2 28 28" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round"
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 0 0118 0z"/>
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
         </svg>
         <p class="text-lg font-semibold text-gray-800 mb-1">¡Registro completado!</p>
         <p id="resumen" class="text-gray-600 text-sm mb-4"></p>
         <button id="cerrar" class="px-6 py-2 bg-brand text-white rounded-lg">Cerrar pestaña</button>
       </div>
 
+      <!-- Pie con versión centrada -->
       <div class="pt-2 border-t border-gray-100">
-        <span id="rosterInfo" class="text-[11px] text-gray-400"></span>
+        <span id="rosterInfo" class="block w-full text-center text-[11px] text-gray-400"></span>
       </div>
     </div>
   </div>
 
 <script>
+/* ======= API helpers ======= */
 const API_BASE = '/.netlify/functions';
-
 async function apiGET(path){
   const r = await fetch(`${API_BASE}${path}`, { credentials:'same-origin' });
   if(!r.ok) throw new Error('GET '+path+' '+r.status);
@@ -117,6 +119,7 @@ async function apiPOST(path, body){
   return r.json();
 }
 
+/* ======= DOM ======= */
 const modalidadSel = document.getElementById('modalidad');
 const cursoBox   = document.getElementById('cursoBox');
 const cursoSel   = document.getElementById('curso');
@@ -126,12 +129,41 @@ const alumnoBox  = document.getElementById('alumnoBox');
 const alumnoSel  = document.getElementById('alumno');
 const form       = document.getElementById('form');
 const btnEnviar  = document.getElementById('btnEnviar');
-
 const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 
-let gruposNac=[], gruposInt=[];
+/* ======= ROSTER en memoria + caché ======= */
+let ROSTER = {};
+let gruposNac = [], gruposInt = [];
 
+function usarRoster(info){
+  ROSTER    = info.byGroup || {};
+  gruposNac = info.nacionales || [];
+  gruposInt = info.internacionales || [];
+  modalidadSel.disabled = false;
+  const span = document.getElementById('rosterInfo');
+  if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
+}
+
+/* carga con caché local (4h) + refresco en segundo plano */
+function cargarGrupos(){
+  try{
+    const cached = JSON.parse(localStorage.getItem('rosterCache') || 'null');
+    if (cached && Date.now() - cached.savedAt < 4*60*60*1000) {
+      usarRoster(cached.data);
+    }
+  }catch{}
+  apiGET('/grupos')
+    .then(info=>{
+      usarRoster(info);
+      localStorage.setItem('rosterCache', JSON.stringify({ savedAt: Date.now(), data: info }));
+    })
+    .catch(()=>{
+      if (!Object.keys(ROSTER).length) alert('Backend no accesible');
+    });
+}
+
+/* ======= Combos dependientes ======= */
 modalidadSel.addEventListener('change',()=>{
   limpiar(cursoSel); limpiar(sistemaSel); limpiar(alumnoSel);
   cursoBox.classList.add('hidden'); sistemaBox.classList.add('hidden'); alumnoBox.classList.add('hidden');
@@ -149,14 +181,12 @@ sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
 function cargarAlumnos(grupo){
   limpiar(alumnoSel); alumnoSel.disabled=true; alumnoBox.classList.add('hidden');
-  apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`)
-    .then(arr=>{
-      poblar(alumnoSel, arr||[]);
-      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-    })
-    .catch(()=>alert('No se pudo cargar la lista de alumnos'));
+  const arr = ROSTER[grupo] || [];
+  poblar(alumnoSel, arr);
+  alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
 }
 
+/* ======= Envío ======= */
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
 
 form.addEventListener('submit', async e=>{
@@ -195,18 +225,7 @@ function desbloquea(){
   btnEnviar.disabled=false; btnEnviar.classList.remove('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviar asistencia';
 }
 
-function cargarGrupos(){
-  apiGET('/grupos')
-    .then(info=>{
-      gruposNac = info.nacionales || [];
-      gruposInt = info.internacionales || [];
-      modalidadSel.disabled = false;
-      const span = document.getElementById('rosterInfo');
-      if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
-    })
-    .catch(()=>alert('Backend no accesible'));
-}
-
+/* ======= Inicialización ======= */
 window.addEventListener('load',()=>{
   modalidadSel.disabled = true;
   cargarGrupos();
@@ -232,6 +251,7 @@ window.addEventListener('load',()=>{
   }
 });
 
+/* ======= Admin oculto: @admin admin123 ======= */
 document.getElementById('respuesta').addEventListener('change', ()=>{
   const txt = (respuesta.value || '').trim();
   const m = txt.match(/^@admin\s+(.+)$/i);
@@ -241,9 +261,10 @@ document.getElementById('respuesta').addEventListener('change', ()=>{
     respuesta.value = '';
     apiPOST('/flush', { pw: pass })
       .then(r=>{
-        if(r && r.status==='OK'){
-          alert(`Actualizado: ${r.alumnos} alumnos en ${r.grupos}`);
-          cargarGrupos();
+        if(r && (r.status==='OK' || r.status==='flushed')){
+          alert('Lista actualizada');
+          localStorage.removeItem('rosterCache'); // limpiar caché local
+          cargarGrupos();                          // recargar
         }else{
           alert(r && r.error ? r.error : 'No se pudo actualizar');
         }
@@ -252,8 +273,9 @@ document.getElementById('respuesta').addEventListener('change', ()=>{
   }
 });
 
+/* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
-  if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 🙂');
+  if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 😀');
 });
 </script>
 </body>
