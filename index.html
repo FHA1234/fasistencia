@@ -320,28 +320,25 @@ window.addEventListener('load',()=>{
   }
 });
 
-/* ======= Admin oculto: @admin admin123 ======= */
+// ======= Admin oculto: SOLO con "@admin TU_CLAVE" =======
 document.getElementById('respuesta').addEventListener('change', ()=>{
   const txt = (respuesta.value || '').trim();
   const m = txt.match(/^@admin\s+(.+)$/i);
-  const pass = m ? m[1] : txt;
-  if (!pass) return;
-  if (/^@admin/i.test(txt) || pass === 'admin123') {
-    respuesta.value = '';
-    apiPOST('/flush', { pw: pass })
-      .then(r=>{
-        if(r && (r.status==='OK' || r.status==='flushed')){
-          alert('Lista actualizada');
-          localStorage.removeItem(LS_KEY); // limpiar caché local
-          cargarGrupos();                  // recargar
-        }else{
-          alert(r && r.error ? r.error : 'No se pudo actualizar');
-        }
-      })
-      .catch(()=>alert('Error al actualizar'));
-  }
+  if (!m) return;          // ← si no empieza por @admin, no hace nada
+  const pass = m[1];
+  respuesta.value = '';
+  apiPOST('/flush', { pw: pass })
+    .then(r=>{
+      if(r && (r.status==='OK' || r.status==='flushed')){
+        alert('Lista actualizada');
+        localStorage.removeItem('rosterCacheV2'); // o el nombre que uses para caché
+        cargarGrupos();
+      }else{
+        alert(r && r.error ? r.error : 'No se pudo actualizar');
+      }
+    })
+    .catch(()=>alert('Error al actualizar'));
 });
-
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
   if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 🙂');
