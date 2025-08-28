@@ -15,10 +15,12 @@
   <div class="w-full max-w-md">
     <div id="card" class="bg-white shadow-xl rounded-2xl p-8 space-y-4 transition-all duration-300">
       <img id="logo" src="https://marcetfootball.com/wp-content/uploads/2023/03/Marcet-football-university@4x.png"
-           class="mx-auto h-20 w-auto select-none" alt="Logo Marcet">
+           class="mx-auto h-20 w-auto" alt="Logo Marcet">
       <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
 
+      <!-- ============ FORMULARIO ============ -->
       <form id="form" class="space-y-4">
+        <!-- Modalidad -->
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Modalidad</label>
           <select id="modalidad" name="modalidad" required
@@ -29,6 +31,7 @@
           </select>
         </div>
 
+        <!-- Curso (nacional) -->
         <div id="cursoBox" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1">Curso o Grupo</label>
           <select id="curso" name="curso" required disabled
@@ -37,6 +40,7 @@
           </select>
         </div>
 
+        <!-- Sistema (internacional) -->
         <div id="sistemaBox" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1">Sistema educativo</label>
           <select id="sistema" name="sistema" required disabled
@@ -45,6 +49,7 @@
           </select>
         </div>
 
+        <!-- Alumno -->
         <div id="alumnoBox" class="hidden">
           <label class="block text-sm font-medium text-gray-600 mb-1">Alumno</label>
           <select id="alumno" name="alumno" required disabled
@@ -53,6 +58,7 @@
           </select>
         </div>
 
+        <!-- Palabra clave -->
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Respuesta presencial</label>
           <input id="respuesta" name="respuesta" required
@@ -74,6 +80,7 @@
         </button>
       </form>
 
+      <!-- ======= CONFIRMACIÓN ======= -->
       <div id="ok" class="hidden text-center">
         <svg class="mx-auto h-20 w-20 text-brand mb-2 overflow-visible"
              fill="none" stroke="currentColor" stroke-width="1.6"
@@ -86,6 +93,7 @@
         <button id="cerrar" class="px-6 py-2 bg-brand text-white rounded-lg">Cerrar pestaña</button>
       </div>
 
+      <!-- Pie con versión centrada -->
       <div class="pt-2 border-t border-gray-100">
         <span id="rosterInfo" class="block w-full text-center text-[11px] text-gray-400"></span>
       </div>
@@ -93,29 +101,10 @@
   </div>
 
 <script>
-/* ====== BLOQUEO GLOBAL DE FLUSH (solo se permite si es admin real) ====== */
-(function(){
-  const realFetch = window.fetch.bind(window);
-  window.__adminIntent = false; // bandera: true solo cuando el usuario escribe @admin <clave>
-  window.fetch = (input, init={})=>{
-    try{
-      const url = typeof input === 'string' ? input : input.url;
-      if(url && url.includes('/.netlify/functions/flush') && !window.__adminIntent){
-        // bloqueamos cualquier flush no explícito
-        return Promise.resolve(new Response(
-          JSON.stringify({status:'IGNORED'}),
-          {status:200, headers:{'Content-Type':'application/json'}}
-        ));
-      }
-    }catch(e){}
-    return realFetch(input, init);
-  };
-})();
-
 /* ======= API helpers ======= */
 const API_BASE = '/.netlify/functions';
-async function apiGET(path){
-  const r = await fetch(`${API_BASE}${path}`, { credentials:'same-origin' });
+async function apiGET(path, init){
+  const r = await fetch(`${API_BASE}${path}`, Object.assign({ credentials:'same-origin' }, init||{}));
   if(!r.ok) throw new Error('GET '+path+' '+r.status);
   return r.json();
 }
@@ -152,14 +141,17 @@ const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 
 /* ======= ROSTER en memoria + caché ======= */
-let ROSTER = {};                // { GRUPO: [alumnos] }
+let ROSTER = {};                // { GRUPO: [alumnos] } si viene precargado
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV3';
+const LS_KEY = 'rosterCacheV3'; // bump para evitar basura vieja
 
-/* --- Normalizador --- */
+/* --- Normalizador robusto --- */
 function normalizaRoster(raw){
   const isObj = raw && typeof raw === 'object';
-  if (isObj && raw.byGroup) {
+  const hasByGroup = isObj && raw.byGroup && typeof raw.byGroup === 'object';
+  const hasLists   = isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales));
+
+  if (hasByGroup) {
     return {
       byGroup: raw.byGroup || {},
       nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : Object.keys(raw.byGroup||{}).sort(),
@@ -168,11 +160,11 @@ function normalizaRoster(raw){
       updatedAt: raw.updatedAt || new Date().toISOString()
     };
   }
-  if (isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales))) {
+  if (hasLists) {
     return {
       byGroup: {},
-      nacionales: raw.nacionales || [],
-      internacionales: raw.internacionales || [],
+      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : [],
+      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
       version: raw.version || Date.now(),
       updatedAt: raw.updatedAt || new Date().toISOString()
     };
@@ -210,14 +202,14 @@ function cargarGrupos(){
       usarRoster(normalizaRoster(cached.data));
     }
   }catch{}
+
   apiGET('/grupos')
     .then(raw=>{
       const info = normalizaRoster(raw);
       usarRoster(info);
       localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: Date.now(), data: info }));
     })
-    .catch(err=>{
-      console.error(err);
+    .catch(()=>{
       if (!Object.keys(ROSTER).length) alert('Backend no accesible');
       modalidadSel.disabled = false;
     });
@@ -239,62 +231,62 @@ modalidadSel.addEventListener('change',()=>{
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
-function cargarAlumnos(grupo){
-  limpiar(alumnoSel);
-  alumnoSel.disabled = true;
-  alumnoBox.classList.add('hidden');
+/* ======= Aceleración alumnos: caché + AbortController ======= */
+const ALUMNOS_CACHE = new Map(); // grupo -> [alumnos]
+let alumnosAbort = null;
 
-  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
-  if (precargado && precargado.length){
-    poblar(alumnoSel, precargado);
+function setLoadingAlumnos(){
+  limpiar(alumnoSel);
+  const opt = new Option('Cargando…','');
+  opt.disabled = true; opt.selected = true;
+  alumnoSel.add(opt);
+}
+
+function cargarAlumnos(grupo){
+  if(!grupo) return;
+  alumnoBox.classList.add('hidden');
+  alumnoSel.disabled = true;
+
+  // 1) ¿ya lo tenemos en memoria?
+  if (ALUMNOS_CACHE.has(grupo)) {
+    const arr = ALUMNOS_CACHE.get(grupo);
+    limpiar(alumnoSel); poblar(alumnoSel, arr);
     alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
     return;
   }
-  apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`)
+
+  // 2) ¿vino precargado con byGroup?
+  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
+  if (precargado && precargado.length){
+    ALUMNOS_CACHE.set(grupo, precargado);
+    limpiar(alumnoSel); poblar(alumnoSel, precargado);
+    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    return;
+  }
+
+  // 3) Fallback a red, evitando carreras
+  setLoadingAlumnos();
+  if (alumnosAbort) alumnosAbort.abort();
+  alumnosAbort = new AbortController();
+
+  apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`, { signal: alumnosAbort.signal })
     .then(arr=>{
-      poblar(alumnoSel, Array.isArray(arr) ? arr : []);
+      const lista = Array.isArray(arr) ? arr : [];
+      ALUMNOS_CACHE.set(grupo, lista);
+      limpiar(alumnoSel); poblar(alumnoSel, lista);
       alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
     })
-    .catch(()=>{
+    .catch(err=>{
+      if (err && err.name === 'AbortError') return; // se cambió de grupo, ignorar
+      limpiar(alumnoSel);
       alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
     });
-}
-
-/* ======= Admin SOLO con "@admin <clave>" en Respuesta ======= */
-function getAdminPassword(texto){
-  const m = /^@admin\s+(.+)$/i.exec((texto || '').trim());
-  return m ? m[1] : null;
 }
 
 /* ======= Envío ======= */
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
 
-form.addEventListener('submit', async (e)=>{
-  const pw = getAdminPassword(respuesta.value);
-
-  // 1) ADMIN: si empieza por "@admin <clave>", NO fichamos; solo flush permitido
-  if (pw) {
-    e.preventDefault();
-    try {
-      window.__adminIntent = true;               // <-- permitir flush
-      const r = await apiPOST('/flush', { pw });
-      window.__adminIntent = false;
-      if (r && (r.status === 'OK' || r.status === 'flushed')) {
-        alert('Lista actualizada');
-        try { localStorage.removeItem(LS_KEY); } catch {}
-        respuesta.value = '';
-        cargarGrupos();
-      } else {
-        alert('Error: ' + (r && r.error ? r.error : 'No se pudo actualizar'));
-      }
-    } catch {
-      window.__adminIntent = false;
-      alert('Error al actualizar');
-    }
-    return; // NO registrar asistencia
-  }
-
-  // 2) FICHAJE NORMAL
+form.addEventListener('submit', async e=>{
   e.preventDefault();
   if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
 
@@ -305,7 +297,7 @@ form.addEventListener('submit', async (e)=>{
     curso    : cursoSel.value,
     sistema  : sistemaSel.value,
     alumno   : alumnoSel.value,
-    respuesta: respuesta.value,   // texto libre; no se valida
+    respuesta: respuesta.value,
     ua       : ua.value,
     ip       : ip.value,
     lat      : lat.value,
@@ -326,7 +318,6 @@ form.addEventListener('submit', async (e)=>{
     }
   }catch(err){ alert('Error de red'); desbloquea(); }
 });
-
 function desbloquea(){
   btnEnviar.disabled=false; btnEnviar.classList.remove('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviar asistencia';
 }
@@ -355,6 +346,26 @@ window.addEventListener('load',()=>{
     FingerprintJS.load().then(fp=>fp.get())
       .then(r=>finger.value=r.visitorId.slice(0,8)).catch(()=>{});
   }
+});
+
+/* ======= Admin: SOLO si se escribe "@admin <clave>" ======= */
+respuesta.addEventListener('change', ()=>{
+  const txt = (respuesta.value || '').trim();
+  const m = txt.match(/^@admin\s+(.+)$/i);
+  if (!m) return;                    // <- NO admin: no hacemos nada
+  const pass = m[1];
+  respuesta.value = '';              // limpia el campo antes de llamar
+  apiPOST('/flush', { pw: pass })
+    .then(r=>{
+      if(r && (r.status==='OK' || r.status==='flushed')){
+        alert('Lista actualizada');
+        localStorage.removeItem(LS_KEY);
+        cargarGrupos();
+      }else{
+        alert(r && r.error ? r.error : 'No se pudo actualizar');
+      }
+    })
+    .catch(()=>alert('Error al actualizar'));
 });
 
 /* ======= Cerrar ======= */
