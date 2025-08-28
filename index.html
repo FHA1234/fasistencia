@@ -133,14 +133,64 @@ const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 
 /* ======= ROSTER en memoria + caché ======= */
-let ROSTER = {};
+let ROSTER = {};                // { GRUPO: [alumnos] } si viene precargado
 let gruposNac = [], gruposInt = [];
+const LS_KEY = 'rosterCacheV2';
+
+/* --- Normalizador robusto: acepta varias formas --- */
+function normalizaRoster(raw){
+  const isObj = raw && typeof raw === 'object';
+
+  const hasByGroup = isObj && raw.byGroup && typeof raw.byGroup === 'object';
+  const hasLists   = isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales));
+
+  // Caso 1: formato completo {byGroup, nacionales, internacionales}
+  if (hasByGroup) {
+    return {
+      byGroup: raw.byGroup || {},
+      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : Object.keys(raw.byGroup||{}).sort(),
+      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
+      version: raw.version || Date.now(),
+      updatedAt: raw.updatedAt || new Date().toISOString()
+    };
+  }
+
+  // Caso 2: solo listas nacionales/internacionales (sin byGroup)
+  if (hasLists) {
+    return {
+      byGroup: {}, // no tenemos alumnos precargados
+      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : [],
+      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
+      version: raw.version || Date.now(),
+      updatedAt: raw.updatedAt || new Date().toISOString()
+    };
+  }
+
+  // Caso 3: el backend devolvió directamente el mapa {GRUPO:[alumnos]}
+  if (isObj) {
+    const values = Object.values(raw);
+    const looksLikeMap = values.length && values.every(v => Array.isArray(v));
+    if (looksLikeMap) {
+      return {
+        byGroup: raw,
+        nacionales: Object.keys(raw).sort(),
+        internacionales: [],
+        version: Date.now(),
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+
+  // Fallback seguro
+  return { byGroup:{}, nacionales:[], internacionales:[], version:Date.now(), updatedAt:new Date().toISOString() };
+}
 
 function usarRoster(info){
   ROSTER    = info.byGroup || {};
   gruposNac = info.nacionales || [];
   gruposInt = info.internacionales || [];
   modalidadSel.disabled = false;
+
   const span = document.getElementById('rosterInfo');
   if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
 }
@@ -148,15 +198,17 @@ function usarRoster(info){
 /* carga con caché local (4h) + refresco en segundo plano */
 function cargarGrupos(){
   try{
-    const cached = JSON.parse(localStorage.getItem('rosterCache') || 'null');
+    const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
     if (cached && Date.now() - cached.savedAt < 4*60*60*1000) {
-      usarRoster(cached.data);
+      usarRoster(normalizaRoster(cached.data));
     }
   }catch{}
+
   apiGET('/grupos')
-    .then(info=>{
+    .then(raw=>{
+      const info = normalizaRoster(raw);
       usarRoster(info);
-      localStorage.setItem('rosterCache', JSON.stringify({ savedAt: Date.now(), data: info }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: Date.now(), data: info }));
     })
     .catch(()=>{
       if (!Object.keys(ROSTER).length) alert('Backend no accesible');
@@ -170,20 +222,37 @@ modalidadSel.addEventListener('change',()=>{
   cursoSel.disabled = sistemaSel.disabled = alumnoSel.disabled = true;
 
   if(modalidadSel.value==='NACIONAL'){
-    poblar(cursoSel,gruposNac); cursoBox.classList.remove('hidden'); cursoSel.disabled=false;
+    poblar(cursoSel, gruposNac); cursoBox.classList.remove('hidden'); cursoSel.disabled=false;
   }
   if(modalidadSel.value==='INTERNACIONAL'){
-    poblar(sistemaSel,gruposInt); sistemaBox.classList.remove('hidden'); sistemaSel.disabled=false;
+    poblar(sistemaSel, gruposInt); sistemaBox.classList.remove('hidden'); sistemaSel.disabled=false;
   }
 });
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
+/* Si no hay byGroup precargado, pedimos /alumnos al vuelo */
 function cargarAlumnos(grupo){
-  limpiar(alumnoSel); alumnoSel.disabled=true; alumnoBox.classList.add('hidden');
-  const arr = ROSTER[grupo] || [];
-  poblar(alumnoSel, arr);
-  alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+  limpiar(alumnoSel);
+  alumnoSel.disabled = true;
+  alumnoBox.classList.add('hidden');
+
+  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
+  if (precargado && precargado.length){
+    poblar(alumnoSel, precargado);
+    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    return;
+  }
+
+  // Fallback: pedir por red solo si hace falta
+  apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`)
+    .then(arr=>{
+      poblar(alumnoSel, Array.isArray(arr) ? arr : []);
+      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    })
+    .catch(()=>{
+      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    });
 }
 
 /* ======= Envío ======= */
@@ -263,8 +332,8 @@ document.getElementById('respuesta').addEventListener('change', ()=>{
       .then(r=>{
         if(r && (r.status==='OK' || r.status==='flushed')){
           alert('Lista actualizada');
-          localStorage.removeItem('rosterCache'); // limpiar caché local
-          cargarGrupos();                          // recargar
+          localStorage.removeItem(LS_KEY); // limpiar caché local
+          cargarGrupos();                  // recargar
         }else{
           alert(r && r.error ? r.error : 'No se pudo actualizar');
         }
@@ -275,7 +344,7 @@ document.getElementById('respuesta').addEventListener('change', ()=>{
 
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
-  if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 😀');
+  if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 🙂');
 });
 </script>
 </body>
