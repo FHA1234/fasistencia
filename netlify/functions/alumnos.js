@@ -1,13 +1,13 @@
+// netlify/functions/grupos.js
 const { resp, gsGet } = require('./_fetch');
 
-exports.handler = async (event) => {
+exports.handler = async () => {
   try {
-    const url = new URL(event.rawUrl);
-    const grupo = url.searchParams.get('grupo') || '';
-    const data = await gsGet({ action: 'alumnos', grupo });
+    // Apps Script nuevo: GET ?action=grupos (+server_secret lo añade _fetch)
+    const data = await gsGet({ action: 'grupos' });
     return resp(200, data);
   } catch (e) {
-    console.error('alumnos error:', e);
+    console.error('grupos error:', e);
     return resp(502, { error: 'BACKEND_UNAVAILABLE' });
   }
 };
