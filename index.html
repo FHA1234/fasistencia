@@ -349,24 +349,25 @@ window.addEventListener('load',()=>{
 });
 
 /* ======= Admin: SOLO si se escribe "@admin <clave>" ======= */
-respuesta.addEventListener('change', ()=>{
+document.getElementById('respuesta').addEventListener('change', ()=>{
   const txt = (respuesta.value || '').trim();
-  const m = txt.match(/^@admin\s+(.+)$/i);
-  if (!m) return;                    // <- NO admin: no hacemos nada
+  const m = /^@admin\s+(.+)$/i.exec(txt);
+  if (!m) return;                    // <- si no empieza por @admin, NO hacemos nada
   const pass = m[1];
-  respuesta.value = '';              // limpia el campo antes de llamar
+  respuesta.value = '';              // limpia antes de llamar
   apiPOST('/flush', { pw: pass })
     .then(r=>{
-      if(r && (r.status==='OK' || r.status==='flushed')){
+      if (r && (r.status==='OK' || r.status==='flushed')) {
         alert('Lista actualizada');
         localStorage.removeItem(LS_KEY);
         cargarGrupos();
-      }else{
+      } else {
         alert(r && r.error ? r.error : 'No se pudo actualizar');
       }
     })
     .catch(()=>alert('Error al actualizar'));
 });
+
 
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
