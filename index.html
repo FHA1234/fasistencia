@@ -304,4 +304,50 @@ form.addEventListener('submit', async (e)=>{
   try{
     const r = await apiPOST('/registro', payload);
     if(r && r.status==='OK'){
-      cons
+      const ahora=new Date();
+      document.getElementById('resumen').textContent =
+        `${alumnoSel.value} registrado el ${ahora.toLocaleDateString('es-ES')} a las ${ahora.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`;
+      form.classList.add('hidden'); document.getElementById('ok').classList.remove('hidden');
+    }else{
+      alert('Error: '+(r && r.error ? r.error : 'desconocido')); desbloquea();
+    }
+  }catch(err){ alert('Error de red'); desbloquea(); }
+});
+
+function desbloquea(){
+  btnEnviar.disabled=false; btnEnviar.classList.remove('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviar asistencia';
+}
+
+/* ======= Inicialización ======= */
+window.addEventListener('load',()=>{
+  modalidadSel.disabled = true;
+  cargarGrupos();
+
+  ua.value = navigator.userAgent;
+  fetch('https://api.ipify.org?format=json')
+    .then(r=>r.json()).then(j=>ip.value=j.ip).catch(()=>ip.value='ND');
+
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      p=>{lat.value=p.coords.latitude.toFixed(6); lon.value=p.coords.longitude.toFixed(6);},
+      ()=>{}, {timeout:6000}
+    );
+  }
+
+  let u=localStorage.getItem('uuid');
+  if(!u){ u=crypto.randomUUID(); localStorage.setItem('uuid',u); }
+  uuid.value=u;
+
+  if(window.FingerprintJS){
+    FingerprintJS.load().then(fp=>fp.get())
+      .then(r=>finger.value=r.visitorId.slice(0,8)).catch(()=>{});
+  }
+});
+
+/* ======= Cerrar ======= */
+document.getElementById('cerrar').addEventListener('click',()=>{
+  if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 🙂');
+});
+</script>
+</body>
+</html>
