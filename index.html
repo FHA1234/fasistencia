@@ -141,9 +141,9 @@ const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 
 /* ======= ROSTER en memoria + caché ======= */
-let ROSTER = {};                // { GRUPO: [alumnos] } si viene precargado
+let ROSTER = {};                // { GRUPO: [alumnos] }
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV4'; // bump de versión
+const LS_KEY = 'rosterCacheV5'; // bump de versión
 
 /* --- Normalizador robusto --- */
 function normalizaRoster(raw){
@@ -194,16 +194,16 @@ function usarRoster(info){
   if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
 }
 
-/* carga con caché local (4h) + refresco en segundo plano */
+/* carga con caché local (opcional) + lectura desde roster-get (CDN) */
 function cargarGrupos(){
+  // 1) Si hay caché local, úsala para pintar rápido
   try{
     const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
-    if (cached && Date.now() - cached.savedAt < 4*60*60*1000) {
-      usarRoster(normalizaRoster(cached.data));
-    }
+    if (cached && cached.data) usarRoster(normalizaRoster(cached.data));
   }catch{}
 
-  apiGET('/grupos')
+  // 2) Siempre pedimos al servidor la última versión (rápido, CDN)
+  apiGET('/roster-get')
     .then(raw=>{
       const info = normalizaRoster(raw);
       usarRoster(info);
@@ -231,61 +231,20 @@ modalidadSel.addEventListener('change',()=>{
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
-/* ======= Aceleración alumnos: caché + AbortController ======= */
-const ALUMNOS_CACHE = new Map(); // grupo -> [alumnos]
-let alumnosAbort = null;
-
-function setLoadingAlumnos(){
-  limpiar(alumnoSel);
-  const opt = new Option('Cargando…','');
-  opt.disabled = true; opt.selected = true;
-  alumnoSel.add(opt);
-}
-
+/* ======= Cargar alumnos desde ROSTER (sin red) ======= */
 function cargarAlumnos(grupo){
   if(!grupo) return;
   alumnoBox.classList.add('hidden');
   alumnoSel.disabled = true;
 
-  // 1) cache en memoria
-  if (ALUMNOS_CACHE.has(grupo)) {
-    const arr = ALUMNOS_CACHE.get(grupo);
-    limpiar(alumnoSel); poblar(alumnoSel, arr);
-    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-    return;
-  }
-
-  // 2) precargado por byGroup
-  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
-  if (precargado && precargado.length){
-    ALUMNOS_CACHE.set(grupo, precargado);
-    limpiar(alumnoSel); poblar(alumnoSel, precargado);
-    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-    return;
-  }
-
-  // 3) red con cancelación
-  setLoadingAlumnos();
-  if (alumnosAbort) alumnosAbort.abort();
-  alumnosAbort = new AbortController();
-
-  apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`, { signal: alumnosAbort.signal })
-    .then(arr=>{
-      const lista = Array.isArray(arr) ? arr : [];
-      ALUMNOS_CACHE.set(grupo, lista);
-      limpiar(alumnoSel); poblar(alumnoSel, lista);
-      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-    })
-    .catch(err=>{
-      if (err && err.name === 'AbortError') return;
-      limpiar(alumnoSel);
-      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-    });
+  const lista = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : [];
+  limpiar(alumnoSel); poblar(alumnoSel, lista);
+  alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
 }
 
 /* ======= Admin: SOLO con "@admin <clave>" ======= */
-function getAdminPassword(txt){
-  const m = /^@admin\s+(.+)$/i.exec((txt||'').trim());
+function extraerPwAdmin(texto){
+  const m = /^@admin\s+(.+)$/i.exec((texto||'').trim());
   return m ? m[1] : null;
 }
 
@@ -296,18 +255,18 @@ form.addEventListener('submit', async e=>{
   e.preventDefault();
 
   // ¿Admin?
-  const adminPw = getAdminPassword(respuesta.value);
+  const adminPw = extraerPwAdmin(respuesta.value);
   if (adminPw){
     try{
       btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Actualizando…';
-      const r = await apiPOST('/flush', { pw: adminPw });
-      if (r && (r.status === 'OK' || r.status === 'flushed' || r.status === 'DISABLED')){
+      const r = await apiPOST('/roster-flush', { pw: adminPw });
+      if (r && r.status === 'OK'){
         alert('Lista actualizada');
         try { localStorage.removeItem(LS_KEY); } catch {}
         respuesta.value = '';
-        cargarGrupos();
+        cargarGrupos(); // vuelve a leer roster-get ya regenerado
       }else{
-        alert('Error de actualización');
+        alert('No autorizado');
       }
     }catch{ alert('Error de red'); }
     finally{ desbloquea(); }
@@ -383,3 +342,4 @@ document.getElementById('cerrar').addEventListener('click',()=>{
 </script>
 </body>
 </html>
+
