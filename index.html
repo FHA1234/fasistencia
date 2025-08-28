@@ -320,24 +320,49 @@ window.addEventListener('load',()=>{
   }
 });
 
-// ======= Admin oculto: SOLO con "@admin TU_CLAVE" =======
-document.getElementById('respuesta').addEventListener('change', ()=>{
-  const txt = (respuesta.value || '').trim();
-  const m = txt.match(/^@admin\s+(.+)$/i);
-  if (!m) return;          // ← si no empieza por @admin, no hace nada
-  const pass = m[1];
+// ===== Admin oculto: SOLO con "@admin <clave>" =====
+const LS_KEY = 'rosterCacheV2'; // usa tu misma clave de caché si es otra
+
+const ADMIN_CMD = /^@admin\s+(.+)$/i;
+
+// Devuelve true si era comando admin y ya hizo el flush.
+// Devuelve false si NO era admin (no hace nada).
+function tryAdminFlushFrom(texto){
+  const m = ADMIN_CMD.exec((texto || '').trim());
+  if(!m) return false;                 // <-- NO era admin, salir sin hacer nada
+  const pw = m[1];
+  // limpiar el campo para no registrar "@admin ..."
   respuesta.value = '';
-  apiPOST('/flush', { pw: pass })
+
+  // llamar al backend de flush
+  apiPOST('/flush', { pw })
     .then(r=>{
-      if(r && (r.status==='OK' || r.status==='flushed')){
+      if (r && (r.status==='OK' || r.status==='flushed')) {
         alert('Lista actualizada');
-        localStorage.removeItem('rosterCacheV2'); // o el nombre que uses para caché
-        cargarGrupos();
-      }else{
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        cargarGrupos();                 // recarga listas
+      } else {
         alert(r && r.error ? r.error : 'No se pudo actualizar');
       }
     })
     .catch(()=>alert('Error al actualizar'));
+
+  return true;                         // <-- era admin
+}
+
+// 1) Si el usuario escribe el comando y sale del campo
+respuesta.addEventListener('change', ()=>{
+  tryAdminFlushFrom(respuesta.value);
+});
+
+// 2) Si el usuario escribe el comando y pulsa "Enviar", NO registramos
+const oldSubmitHandler = form.onsubmit; // por si lo usas (si no, ignora)
+form.addEventListener('submit', (ev)=>{
+  // Si el texto es un comando admin, interceptamos y NO llamamos a /registro
+  if (tryAdminFlushFrom(respuesta.value)) {
+    ev.preventDefault();
+    return;
+  }
 });
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
