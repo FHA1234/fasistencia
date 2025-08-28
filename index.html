@@ -129,23 +129,27 @@ const alumnoBox  = document.getElementById('alumnoBox');
 const alumnoSel  = document.getElementById('alumno');
 const form       = document.getElementById('form');
 const btnEnviar  = document.getElementById('btnEnviar');
+const respuesta  = document.getElementById('respuesta');
+const ua         = document.getElementById('ua');
+const ip         = document.getElementById('ip');
+const lat        = document.getElementById('lat');
+const lon        = document.getElementById('lon');
+const uuid       = document.getElementById('uuid');
+const finger     = document.getElementById('finger');
+
 const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 
 /* ======= ROSTER en memoria + caché ======= */
 let ROSTER = {};                // { GRUPO: [alumnos] } si viene precargado
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV2';
+const LS_KEY = 'rosterCacheV3'; // renombrado para evitar basura vieja
 
 /* --- Normalizador robusto: acepta varias formas --- */
 function normalizaRoster(raw){
   const isObj = raw && typeof raw === 'object';
 
-  const hasByGroup = isObj && raw.byGroup && typeof raw.byGroup === 'object';
-  const hasLists   = isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales));
-
-  // Caso 1: formato completo {byGroup, nacionales, internacionales}
-  if (hasByGroup) {
+  if (isObj && raw.byGroup) {
     return {
       byGroup: raw.byGroup || {},
       nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : Object.keys(raw.byGroup||{}).sort(),
@@ -154,23 +158,18 @@ function normalizaRoster(raw){
       updatedAt: raw.updatedAt || new Date().toISOString()
     };
   }
-
-  // Caso 2: solo listas nacionales/internacionales (sin byGroup)
-  if (hasLists) {
+  if (isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales))) {
     return {
-      byGroup: {}, // no tenemos alumnos precargados
-      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : [],
-      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
+      byGroup: {},
+      nacionales: raw.nacionales || [],
+      internacionales: raw.internacionales || [],
       version: raw.version || Date.now(),
       updatedAt: raw.updatedAt || new Date().toISOString()
     };
   }
-
-  // Caso 3: el backend devolvió directamente el mapa {GRUPO:[alumnos]}
   if (isObj) {
     const values = Object.values(raw);
-    const looksLikeMap = values.length && values.every(v => Array.isArray(v));
-    if (looksLikeMap) {
+    if (values.length && values.every(v => Array.isArray(v))) {
       return {
         byGroup: raw,
         nacionales: Object.keys(raw).sort(),
@@ -180,8 +179,6 @@ function normalizaRoster(raw){
       };
     }
   }
-
-  // Fallback seguro
   return { byGroup:{}, nacionales:[], internacionales:[], version:Date.now(), updatedAt:new Date().toISOString() };
 }
 
@@ -210,8 +207,10 @@ function cargarGrupos(){
       usarRoster(info);
       localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: Date.now(), data: info }));
     })
-    .catch(()=>{
+    .catch(err=>{
+      console.error(err);
       if (!Object.keys(ROSTER).length) alert('Backend no accesible');
+      modalidadSel.disabled = false; // al menos permitir abrir la modalidad
     });
 }
 
@@ -244,7 +243,6 @@ function cargarAlumnos(grupo){
     return;
   }
 
-  // Fallback: pedir por red solo si hace falta
   apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`)
     .then(arr=>{
       poblar(alumnoSel, Array.isArray(arr) ? arr : []);
@@ -259,6 +257,12 @@ function cargarAlumnos(grupo){
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
 
 form.addEventListener('submit', async e=>{
+  // Si el contenido es un comando admin, NO registrar
+  if (tryAdminFlushFrom(respuesta.value)) {
+    e.preventDefault();
+    return;
+  }
+
   e.preventDefault();
   if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
 
@@ -320,21 +324,14 @@ window.addEventListener('load',()=>{
   }
 });
 
-// ===== Admin oculto: SOLO con "@admin <clave>" =====
-const LS_KEY = 'rosterCacheV2'; // usa tu misma clave de caché si es otra
-
+/* ======= Admin oculto: SOLO con "@admin <clave>" ======= */
 const ADMIN_CMD = /^@admin\s+(.+)$/i;
-
 // Devuelve true si era comando admin y ya hizo el flush.
-// Devuelve false si NO era admin (no hace nada).
 function tryAdminFlushFrom(texto){
   const m = ADMIN_CMD.exec((texto || '').trim());
-  if(!m) return false;                 // <-- NO era admin, salir sin hacer nada
+  if(!m) return false;                 // <-- NO era admin
   const pw = m[1];
-  // limpiar el campo para no registrar "@admin ..."
-  respuesta.value = '';
-
-  // llamar al backend de flush
+  respuesta.value = '';                // limpiar el campo para no registrar "@admin ..."
   apiPOST('/flush', { pw })
     .then(r=>{
       if (r && (r.status==='OK' || r.status==='flushed')) {
@@ -346,24 +343,12 @@ function tryAdminFlushFrom(texto){
       }
     })
     .catch(()=>alert('Error al actualizar'));
-
-  return true;                         // <-- era admin
+  return true;
 }
 
-// 1) Si el usuario escribe el comando y sale del campo
-respuesta.addEventListener('change', ()=>{
-  tryAdminFlushFrom(respuesta.value);
-});
+// También si el usuario escribe el comando y sale del campo
+respuesta.addEventListener('change', ()=>{ tryAdminFlushFrom(respuesta.value); });
 
-// 2) Si el usuario escribe el comando y pulsa "Enviar", NO registramos
-const oldSubmitHandler = form.onsubmit; // por si lo usas (si no, ignora)
-form.addEventListener('submit', (ev)=>{
-  // Si el texto es un comando admin, interceptamos y NO llamamos a /registro
-  if (tryAdminFlushFrom(respuesta.value)) {
-    ev.preventDefault();
-    return;
-  }
-});
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
   if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 🙂');
