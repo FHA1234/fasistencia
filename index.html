@@ -1,18 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fichaje de Asistencia</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme:{ extend:{ colors:{ brand:{ DEFAULT:'#2563eb', dark:'#1e40af' }}}}};
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js" defer></script>
+</head>
+
+<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+  <div class="w-full max-w-md">
+    <div id="card" class="bg-white shadow-xl rounded-2xl p-8 space-y-4 transition-all duration-300">
+      <img id="logo" src="https://marcetfootball.com/wp-content/uploads/2023/03/Marcet-football-university@4x.png"
+           class="mx-auto h-20 w-auto select-none" alt="Logo Marcet">
+      <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
+
+      <!-- ============ FORMULARIO ============ -->
+      <form id="form" class="space-y-4">
+        <!-- Modalidad -->
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Modalidad</label>
+          <select id="modalidad" name="modalidad" required
+                  class="w-full rounded-lg border-gray-300 focus:border-brand p-3" disabled>
+            <option value="" disabled selected>SELECCIONA MODALIDAD</option>
+            <option value="NACIONAL">NACIONAL</option>
+            <option value="INTERNACIONAL">INTERNACIONAL</option>
+          </select>
+        </div>
+
+        <!-- Curso (nacional) -->
+        <div id="cursoBox" class="hidden">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Curso o Grupo</label>
+          <select id="curso" name="curso" required disabled
+                  class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
+            <option value="" disabled selected>SELECCIONA TU CURSO</option>
+          </select>
+        </div>
+
+        <!-- Sistema (internacional) -->
+        <div id="sistemaBox" class="hidden">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Sistema educativo</label>
+          <select id="sistema" name="sistema" required disabled
+                  class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
+            <option value="" disabled selected>SELECCIONA SISTEMA</option>
+          </select>
+        </div>
+
+        <!-- Alumno -->
+        <div id="alumnoBox" class="hidden">
+          <label class="block text-sm font-medium text-gray-600 mb-1">Alumno</label>
+          <select id="alumno" name="alumno" required disabled
+                  class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
+            <option value="" disabled selected>SELECCIONA ALUMNO</option>
+          </select>
+        </div>
+
+        <!-- Palabra clave -->
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Respuesta presencial</label>
+          <input id="respuesta" name="respuesta" required
+                 placeholder="Palabra clave del día"
+                 class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
+        </div>
+
+        <!-- Ocultos -->
+        <input type="hidden" name="ua"     id="ua">
+        <input type="hidden" name="ip"     id="ip">
+        <input type="hidden" name="lat"    id="lat">
+        <input type="hidden" name="lon"    id="lon">
+        <input type="hidden" name="uuid"   id="uuid">
+        <input type="hidden" name="finger" id="finger">
+
+        <button id="btnEnviar"
+                class="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-3 rounded-lg transition">
+          Enviar asistencia
+        </button>
+      </form>
+
+      <!-- ======= CONFIRMACIÓN ======= -->
+      <div id="ok" class="hidden text-center">
+        <svg class="mx-auto h-20 w-20 text-brand mb-2 overflow-visible"
+             fill="none" stroke="currentColor" stroke-width="1.6"
+             viewBox="-2 -2 28 28" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <p class="text-lg font-semibold text-gray-800 mb-1">¡Registro completado!</p>
+        <p id="resumen" class="text-gray-600 text-sm mb-4"></p>
+        <button id="cerrar" class="px-6 py-2 bg-brand text-white rounded-lg">Cerrar pestaña</button>
+      </div>
+
+      <!-- Pie con versión centrada -->
+      <div class="pt-2 border-t border-gray-100">
+        <span id="rosterInfo" class="block w-full text-center text-[11px] text-gray-400"></span>
+      </div>
+    </div>
+  </div>
+
 <script>
-// --- Config caché (usa tu misma clave si ya tienes otra) ---
+/* ======= API helpers ======= */
+const API_BASE = '/.netlify/functions';
+async function apiGET(path){
+  const r = await fetch(`${API_BASE}${path}`, { credentials:'same-origin' });
+  if(!r.ok) throw new Error('GET '+path+' '+r.status);
+  return r.json();
+}
+async function apiPOST(path, body){
+  const r = await fetch(`${API_BASE}${path}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+    credentials:'same-origin'
+  });
+  if(!r.ok) throw new Error('POST '+path+' '+r.status);
+  return r.json();
+}
+
+/* ======= DOM ======= */
+const modalidadSel = document.getElementById('modalidad');
+const cursoBox   = document.getElementById('cursoBox');
+const cursoSel   = document.getElementById('curso');
+const sistemaBox = document.getElementById('sistemaBox');
+const sistemaSel = document.getElementById('sistema');
+const alumnoBox  = document.getElementById('alumnoBox');
+const alumnoSel  = document.getElementById('alumno');
+const form       = document.getElementById('form');
+const btnEnviar  = document.getElementById('btnEnviar');
+const respuesta  = document.getElementById('respuesta');
+const ua         = document.getElementById('ua');
+const ip         = document.getElementById('ip');
+const lat        = document.getElementById('lat');
+const lon        = document.getElementById('lon');
+const uuid       = document.getElementById('uuid');
+const finger     = document.getElementById('finger');
+
+const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
+const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
+
+/* ======= ROSTER en memoria + caché ======= */
+let ROSTER = {};                // { GRUPO: [alumnos] }
+let gruposNac = [], gruposInt = [];
 const LS_KEY = 'rosterCacheV3';
 
-// --- Detecta comando admin SOLO si empieza por "@admin " ---
+/* --- Normalizador robusto --- */
+function normalizaRoster(raw){
+  const isObj = raw && typeof raw === 'object';
+  if (isObj && raw.byGroup) {
+    return {
+      byGroup: raw.byGroup || {},
+      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : Object.keys(raw.byGroup||{}).sort(),
+      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
+      version: raw.version || Date.now(),
+      updatedAt: raw.updatedAt || new Date().toISOString()
+    };
+  }
+  if (isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales))) {
+    return {
+      byGroup: {},
+      nacionales: raw.nacionales || [],
+      internacionales: raw.internacionales || [],
+      version: raw.version || Date.now(),
+      updatedAt: raw.updatedAt || new Date().toISOString()
+    };
+  }
+  if (isObj) {
+    const values = Object.values(raw);
+    if (values.length && values.every(v => Array.isArray(v))) {
+      return {
+        byGroup: raw,
+        nacionales: Object.keys(raw).sort(),
+        internacionales: [],
+        version: Date.now(),
+        updatedAt: new Date().toISOString()
+      };
+    }
+  }
+  return { byGroup:{}, nacionales:[], internacionales:[], version:Date.now(), updatedAt:new Date().toISOString() };
+}
+
+function usarRoster(info){
+  ROSTER    = info.byGroup || {};
+  gruposNac = info.nacionales || [];
+  gruposInt = info.internacionales || [];
+  modalidadSel.disabled = false;
+
+  const span = document.getElementById('rosterInfo');
+  if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
+}
+
+/* carga con caché local (4h) + refresco en segundo plano */
+function cargarGrupos(){
+  try{
+    const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    if (cached && Date.now() - cached.savedAt < 4*60*60*1000) {
+      usarRoster(normalizaRoster(cached.data));
+    }
+  }catch{}
+
+  apiGET('/grupos')
+    .then(raw=>{
+      const info = normalizaRoster(raw);
+      usarRoster(info);
+      localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: Date.now(), data: info }));
+    })
+    .catch(err=>{
+      console.error(err);
+      if (!Object.keys(ROSTER).length) alert('Backend no accesible');
+      modalidadSel.disabled = false;
+    });
+}
+
+/* ======= Combos dependientes ======= */
+modalidadSel.addEventListener('change',()=>{
+  limpiar(cursoSel); limpiar(sistemaSel); limpiar(alumnoSel);
+  cursoBox.classList.add('hidden'); sistemaBox.classList.add('hidden'); alumnoBox.classList.add('hidden');
+  cursoSel.disabled = sistemaSel.disabled = alumnoSel.disabled = true;
+
+  if(modalidadSel.value==='NACIONAL'){
+    poblar(cursoSel, gruposNac); cursoBox.classList.remove('hidden'); cursoSel.disabled=false;
+  }
+  if(modalidadSel.value==='INTERNACIONAL'){
+    poblar(sistemaSel, gruposInt); sistemaBox.classList.remove('hidden'); sistemaSel.disabled=false;
+  }
+});
+cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
+sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
+
+function cargarAlumnos(grupo){
+  limpiar(alumnoSel);
+  alumnoSel.disabled = true;
+  alumnoBox.classList.add('hidden');
+
+  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
+  if (precargado && precargado.length){
+    poblar(alumnoSel, precargado);
+    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    return;
+  }
+  apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`)
+    .then(arr=>{
+      poblar(alumnoSel, Array.isArray(arr) ? arr : []);
+      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    })
+    .catch(()=>{
+      alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    });
+}
+
+/* ======= Admin SOLO con "@admin <clave>" en Respuesta ======= */
 function getAdminPassword(texto){
   const m = /^@admin\s+(.+)$/i.exec((texto || '').trim());
   return m ? m[1] : null;
 }
 
-// --- Envío del formulario con lógica admin mínima ---
+/* ======= Envío ======= */
+function geoOk(){ return lat.value!=='' && lon.value!==''; }
+
 form.addEventListener('submit', async (e)=>{
   const pw = getAdminPassword(respuesta.value);
 
-  // 1) MODO ADMIN: si la respuesta empieza por "@admin <clave>", NO fichamos; solo refrescamos lista
+  // 1) MODO ADMIN: si empieza por "@admin <clave>", NO fichamos; solo refrescamos lista
   if (pw) {
     e.preventDefault();
     try {
@@ -20,31 +270,29 @@ form.addEventListener('submit', async (e)=>{
       if (r && (r.status === 'OK' || r.status === 'flushed')) {
         alert('Lista actualizada');
         try { localStorage.removeItem(LS_KEY); } catch {}
-        respuesta.value = '';     // limpia el campo
-        cargarGrupos();           // recarga roster
+        respuesta.value = '';
+        cargarGrupos();
       } else {
         alert('Error: ' + (r && r.error ? r.error : 'No se pudo actualizar'));
       }
     } catch {
       alert('Error al actualizar');
     }
-    return; // <- salimos, NO registramos asistencia
+    return; // NO registrar asistencia
   }
 
-  // 2) FICHAJE NORMAL (no hay @admin <clave> en la respuesta)
+  // 2) FICHAJE NORMAL
   e.preventDefault();
-  if(lat.value === '' || lon.value === '') { alert('Necesitamos tu ubicación'); return; }
+  if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
 
-  btnEnviar.disabled = true;
-  btnEnviar.classList.add('opacity-60','cursor-not-allowed');
-  btnEnviar.textContent = 'Enviando…';
+  btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviando…';
 
   const payload = {
     modalidad: modalidadSel.value,
     curso    : cursoSel.value,
     sistema  : sistemaSel.value,
     alumno   : alumnoSel.value,
-    respuesta: respuesta.value,       // <- texto libre, NO se valida
+    respuesta: respuesta.value,   // texto libre; no se valida
     ua       : ua.value,
     ip       : ip.value,
     lat      : lat.value,
@@ -53,27 +301,7 @@ form.addEventListener('submit', async (e)=>{
     finger   : finger.value
   };
 
-  try {
+  try{
     const r = await apiPOST('/registro', payload);
-    if (r && r.status === 'OK') {
-      const ahora = new Date();
-      document.getElementById('resumen').textContent =
-        `${alumnoSel.value} registrado el ${ahora.toLocaleDateString('es-ES')} ` +
-        `a las ${ahora.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`;
-      form.classList.add('hidden');
-      document.getElementById('ok').classList.remove('hidden');
-    } else {
-      alert('Error: ' + (r && r.error ? r.error : 'desconocido'));
-      btnEnviar.disabled=false;
-      btnEnviar.classList.remove('opacity-60','cursor-not-allowed');
-      btnEnviar.textContent='Enviar asistencia';
-    }
-  } catch {
-    alert('Error de red');
-    btnEnviar.disabled=false;
-    btnEnviar.classList.remove('opacity-60','cursor-not-allowed');
-    btnEnviar.textContent='Enviar asistencia';
-  }
-});
-</script>
-
+    if(r && r.status==='OK'){
+      cons
