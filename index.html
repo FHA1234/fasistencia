@@ -250,10 +250,38 @@ function cargarAlumnos(grupo){
     });
 }
 
+/* ======= Admin SOLO con "@admin <clave>" en Respuesta ======= */
+function getAdminPassword(texto){
+  const m = /^@admin\s+(.+)$/i.exec((texto || '').trim());
+  return m ? m[1] : null;
+}
+
 /* ======= Envío ======= */
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
 
 form.addEventListener('submit', async (e)=>{
+  const pw = getAdminPassword(respuesta.value);
+
+  // 1) MODO ADMIN: si empieza por "@admin <clave>", NO fichamos; solo refrescamos lista
+  if (pw) {
+    e.preventDefault();
+    try {
+      const r = await apiPOST('/flush', { pw });
+      if (r && (r.status === 'OK' || r.status === 'flushed')) {
+        alert('Lista actualizada');
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        respuesta.value = '';
+        cargarGrupos();
+      } else {
+        alert('Error: ' + (r && r.error ? r.error : 'No se pudo actualizar'));
+      }
+    } catch {
+      alert('Error al actualizar');
+    }
+    return; // NO registrar asistencia
+  }
+
+  // 2) FICHAJE NORMAL
   e.preventDefault();
   if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
 
