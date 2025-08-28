@@ -15,7 +15,7 @@
   <div class="w-full max-w-md">
     <div id="card" class="bg-white shadow-xl rounded-2xl p-8 space-y-4 transition-all duration-300">
       <img id="logo" src="https://marcetfootball.com/wp-content/uploads/2023/03/Marcet-football-university@4x.png"
-           class="mx-auto h-20 w-auto" alt="Logo Marcet">
+           class="mx-auto h-20 w-auto select-none" alt="Logo Marcet">
       <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
 
       <!-- ============ FORMULARIO ============ -->
@@ -143,12 +143,11 @@ const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 /* ======= ROSTER en memoria + caché ======= */
 let ROSTER = {};                // { GRUPO: [alumnos] } si viene precargado
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV3'; // renombrado para evitar basura vieja
+const LS_KEY = 'rosterCacheV3';
 
 /* --- Normalizador robusto: acepta varias formas --- */
 function normalizaRoster(raw){
   const isObj = raw && typeof raw === 'object';
-
   if (isObj && raw.byGroup) {
     return {
       byGroup: raw.byGroup || {},
@@ -210,7 +209,7 @@ function cargarGrupos(){
     .catch(err=>{
       console.error(err);
       if (!Object.keys(ROSTER).length) alert('Backend no accesible');
-      modalidadSel.disabled = false; // al menos permitir abrir la modalidad
+      modalidadSel.disabled = false;
     });
 }
 
@@ -230,7 +229,6 @@ modalidadSel.addEventListener('change',()=>{
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
-/* Si no hay byGroup precargado, pedimos /alumnos al vuelo */
 function cargarAlumnos(grupo){
   limpiar(alumnoSel);
   alumnoSel.disabled = true;
@@ -242,7 +240,6 @@ function cargarAlumnos(grupo){
     alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
     return;
   }
-
   apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`)
     .then(arr=>{
       poblar(alumnoSel, Array.isArray(arr) ? arr : []);
@@ -257,14 +254,7 @@ function cargarAlumnos(grupo){
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
 
 form.addEventListener('submit', async e=>{
-  // Si el contenido es un comando admin, NO registrar
-  if (tryAdminFlushFrom(respuesta.value)) {
-    e.preventDefault();
-    return;
-  }
-
   e.preventDefault();
-  if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
 
   btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviando…';
 
@@ -273,7 +263,7 @@ form.addEventListener('submit', async e=>{
     curso    : cursoSel.value,
     sistema  : sistemaSel.value,
     alumno   : alumnoSel.value,
-    respuesta: respuesta.value,
+    respuesta: respuesta.value,   // <- NO se usa para admin; es puramente texto
     ua       : ua.value,
     ip       : ip.value,
     lat      : lat.value,
@@ -283,6 +273,7 @@ form.addEventListener('submit', async e=>{
   };
 
   try{
+    if(!geoOk()){ throw new Error('Necesitamos tu ubicación'); }
     const r = await apiPOST('/registro', payload);
     if(r && r.status==='OK'){
       const ahora=new Date();
@@ -290,9 +281,12 @@ form.addEventListener('submit', async e=>{
         `${alumnoSel.value} registrado el ${ahora.toLocaleDateString('es-ES')} a las ${ahora.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`;
       form.classList.add('hidden'); document.getElementById('ok').classList.remove('hidden');
     }else{
-      alert('Error: '+(r && r.error ? r.error : 'desconocido')); desbloquea();
+      throw new Error(r && r.error ? r.error : 'Error desconocido');
     }
-  }catch(err){ alert('Error de red'); desbloquea(); }
+  }catch(err){
+    alert(err.message || 'Error de red');
+    desbloquea();
+  }
 });
 function desbloquea(){
   btnEnviar.disabled=false; btnEnviar.classList.remove('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviar asistencia';
@@ -324,30 +318,29 @@ window.addEventListener('load',()=>{
   }
 });
 
-/* ======= Admin oculto: SOLO con "@admin <clave>" ======= */
-const ADMIN_CMD = /^@admin\s+(.+)$/i;
-// Devuelve true si era comando admin y ya hizo el flush.
-function tryAdminFlushFrom(texto){
-  const m = ADMIN_CMD.exec((texto || '').trim());
-  if(!m) return false;                 // <-- NO era admin
-  const pw = m[1];
-  respuesta.value = '';                // limpiar el campo para no registrar "@admin ..."
-  apiPOST('/flush', { pw })
-    .then(r=>{
-      if (r && (r.status==='OK' || r.status==='flushed')) {
-        alert('Lista actualizada');
-        try { localStorage.removeItem(LS_KEY); } catch {}
-        cargarGrupos();                 // recarga listas
-      } else {
-        alert(r && r.error ? r.error : 'No se pudo actualizar');
-      }
-    })
-    .catch(()=>alert('Error al actualizar'));
-  return true;
-}
-
-// También si el usuario escribe el comando y sale del campo
-respuesta.addEventListener('change', ()=>{ tryAdminFlushFrom(respuesta.value); });
+/* ======= ADMIN OCULTO: 5 clics en el logo ======= */
+let adminClicks = 0, adminTimer = null;
+document.getElementById('logo').addEventListener('click', ()=>{
+  adminClicks++;
+  clearTimeout(adminTimer);
+  adminTimer = setTimeout(()=> adminClicks=0, 800); // ventana 0.8s
+  if (adminClicks >= 5) {
+    adminClicks = 0;
+    const pw = prompt('Contraseña admin');
+    if (!pw) return;
+    apiPOST('/flush', { pw })
+      .then(r=>{
+        if (r && (r.status==='OK' || r.status==='flushed')) {
+          alert('Lista actualizada');
+          try { localStorage.removeItem(LS_KEY); } catch {}
+          cargarGrupos();
+        } else {
+          alert(r && r.error ? r.error : 'No se pudo actualizar');
+        }
+      })
+      .catch(()=>alert('Error al actualizar'));
+  }
+});
 
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
