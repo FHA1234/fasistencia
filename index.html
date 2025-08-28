@@ -247,7 +247,7 @@ function cargarAlumnos(grupo){
   alumnoBox.classList.add('hidden');
   alumnoSel.disabled = true;
 
-  // 1) ¿ya lo tenemos en memoria?
+  // 1) cache en memoria
   if (ALUMNOS_CACHE.has(grupo)) {
     const arr = ALUMNOS_CACHE.get(grupo);
     limpiar(alumnoSel); poblar(alumnoSel, arr);
@@ -255,7 +255,7 @@ function cargarAlumnos(grupo){
     return;
   }
 
-  // 2) ¿vino precargado con byGroup?
+  // 2) precargado por byGroup
   const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
   if (precargado && precargado.length){
     ALUMNOS_CACHE.set(grupo, precargado);
@@ -264,7 +264,7 @@ function cargarAlumnos(grupo){
     return;
   }
 
-  // 3) Fallback a red, evitando carreras
+  // 3) red con cancelación
   setLoadingAlumnos();
   if (alumnosAbort) alumnosAbort.abort();
   alumnosAbort = new AbortController();
@@ -277,7 +277,7 @@ function cargarAlumnos(grupo){
       alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
     })
     .catch(err=>{
-      if (err && err.name === 'AbortError') return; // se cambió de grupo, ignorar
+      if (err && err.name === 'AbortError') return;
       limpiar(alumnoSel);
       alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
     });
@@ -297,7 +297,7 @@ form.addEventListener('submit', async e=>{
     curso    : cursoSel.value,
     sistema  : sistemaSel.value,
     alumno   : alumnoSel.value,
-    respuesta: respuesta.value,
+    respuesta: respuesta.value,   // texto libre; no se valida
     ua       : ua.value,
     ip       : ip.value,
     lat      : lat.value,
@@ -347,27 +347,6 @@ window.addEventListener('load',()=>{
       .then(r=>finger.value=r.visitorId.slice(0,8)).catch(()=>{});
   }
 });
-
-/* ======= Admin: SOLO si se escribe "@admin <clave>" ======= */
-document.getElementById('respuesta').addEventListener('change', ()=>{
-  const txt = (respuesta.value || '').trim();
-  const m = /^@admin\s+(.+)$/i.exec(txt);
-  if (!m) return;                    // <- si no empieza por @admin, NO hacemos nada
-  const pass = m[1];
-  respuesta.value = '';              // limpia antes de llamar
-  apiPOST('/flush', { pw: pass })
-    .then(r=>{
-      if (r && (r.status==='OK' || r.status==='flushed')) {
-        alert('Lista actualizada');
-        localStorage.removeItem(LS_KEY);
-        cargarGrupos();
-      } else {
-        alert(r && r.error ? r.error : 'No se pudo actualizar');
-      }
-    })
-    .catch(()=>alert('Error al actualizar'));
-});
-
 
 /* ======= Cerrar ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
