@@ -143,7 +143,7 @@ const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 /* ======= ROSTER en memoria + caché ======= */
 let ROSTER = {};                // { GRUPO: [alumnos] } si viene precargado
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV3'; // bump para evitar basura vieja
+const LS_KEY = 'rosterCacheV4'; // bump de versión
 
 /* --- Normalizador robusto --- */
 function normalizaRoster(raw){
@@ -283,11 +283,38 @@ function cargarAlumnos(grupo){
     });
 }
 
+/* ======= Admin: SOLO con "@admin <clave>" ======= */
+function getAdminPassword(txt){
+  const m = /^@admin\s+(.+)$/i.exec((txt||'').trim());
+  return m ? m[1] : null;
+}
+
 /* ======= Envío ======= */
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
 
 form.addEventListener('submit', async e=>{
   e.preventDefault();
+
+  // ¿Admin?
+  const adminPw = getAdminPassword(respuesta.value);
+  if (adminPw){
+    try{
+      btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Actualizando…';
+      const r = await apiPOST('/flush', { pw: adminPw });
+      if (r && (r.status === 'OK' || r.status === 'flushed' || r.status === 'DISABLED')){
+        alert('Lista actualizada');
+        try { localStorage.removeItem(LS_KEY); } catch {}
+        respuesta.value = '';
+        cargarGrupos();
+      }else{
+        alert('Error de actualización');
+      }
+    }catch{ alert('Error de red'); }
+    finally{ desbloquea(); }
+    return; // NO registrar asistencia cuando es admin
+  }
+
+  // Fichaje normal
   if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
 
   btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviando…';
@@ -297,7 +324,7 @@ form.addEventListener('submit', async e=>{
     curso    : cursoSel.value,
     sistema  : sistemaSel.value,
     alumno   : alumnoSel.value,
-    respuesta: respuesta.value,   // texto libre; no se valida
+    respuesta: respuesta.value,
     ua       : ua.value,
     ip       : ip.value,
     lat      : lat.value,
@@ -318,6 +345,7 @@ form.addEventListener('submit', async e=>{
     }
   }catch(err){ alert('Error de red'); desbloquea(); }
 });
+
 function desbloquea(){
   btnEnviar.disabled=false; btnEnviar.classList.remove('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviar asistencia';
 }
