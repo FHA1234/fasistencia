@@ -1,6 +1,6 @@
 const { resp, gsGet } = require('./_fetch');
 
-// pool de concurrencia para no pasar el timeout
+// pool de concurrencia
 async function withLimit(items, limit, fn) {
   const out = new Array(items.length);
   let i = 0;
@@ -24,19 +24,21 @@ exports.handler = async (event) => {
 
     console.log('flush start');
 
+    // 1) grupos
     const g = await gsGet({ action: 'grupos' });
     const nacionales = Array.isArray(g.nacionales) ? g.nacionales : [];
     const internacionales = Array.isArray(g.internacionales) ? g.internacionales : [];
     const allGroups = [...nacionales, ...internacionales];
     console.log('grupos totales:', allGroups.length);
 
+    // 2) alumnos (límite 5)
     const pairs = await withLimit(allGroups, 5, async (grupo) => {
       const arr = await gsGet({ action: 'alumnos', grupo });
       return [grupo, Array.isArray(arr) ? arr : []];
     });
 
     const byGroup = Object.fromEntries(pairs);
-    const totalAlumnos = Object.values(byGroup).reduce((n, a) => n + a.length, 0);
+    const totalAlumnos = Object.values(byGroup).reduce((n,a)=>n + a.length, 0);
     console.log('alumnos totales:', totalAlumnos);
 
     const roster = {
@@ -44,14 +46,18 @@ exports.handler = async (event) => {
       version: Date.now(), updatedAt: new Date().toISOString()
     };
 
-    // guardar en Netlify Blobs (ESM import)
+    // 3) guardar en Netlify Blobs (modo manual con siteID+token)
     const { getStore } = await import('@netlify/blobs');
-    const store = getStore('roster');
+    const store = getStore('roster', {
+      siteID: process.env.NETLIFY_SITE_ID,
+      token: process.env.NETLIFY_API_TOKEN
+    });
+
     console.log('saving to blobs...');
     await store.setJSON('roster.json', roster);
 
     console.log('flush done', { version: roster.version });
-    return resp(200, { status: 'OK', version: roster.version, grupos: allGroups.length, alumnos: totalAlumnos, updatedAt: roster.updatedAt });
+    return resp(200, { status:'OK', version: roster.version, grupos: allGroups.length, alumnos: totalAlumnos, updatedAt: roster.updatedAt });
   } catch (e) {
     console.error('roster-flush error:', e);
     return resp(502, { error: 'BACKEND_UNAVAILABLE' });
