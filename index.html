@@ -3,19 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#2563eb" />
   <title>Fichaje de Asistencia</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { theme:{ extend:{ colors:{ brand:{ DEFAULT:'#2563eb', dark:'#1e40af' }}, borderRadius:{ '2xl':'1rem' }}}};
+    tailwind.config = {
+      theme:{
+        extend:{
+          colors:{ brand:{ DEFAULT:'#2563eb', dark:'#1e40af' }},
+          borderRadius:{ '2xl':'1rem' }
+        }
+      }
+    };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js" defer></script>
 </head>
 
 <body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+  <!-- Toasts -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 hidden z-50">
+    <div id="toastInner" class="px-4 py-2 rounded-lg shadow-lg text-white bg-gray-800 text-sm"></div>
+  </div>
+
   <div class="w-full max-w-md">
     <div id="card" class="bg-white shadow-xl rounded-2xl p-8 space-y-5 transition-all duration-300">
       <img id="logo" src="https://marcetfootball.com/wp-content/uploads/2023/03/Marcet-football-university@4x.png"
-           class="mx-auto h-20 w-auto" alt="Logo Marcet">
+           class="mx-auto h-20 w-auto select-none" alt="Logo Marcet">
 
       <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
 
@@ -122,16 +135,37 @@
 
       <div class="px-5 pb-5 space-y-4">
         <!-- Estado -->
-        <div class="rounded-xl border border-gray-100 p-4 bg-gray-50">
+        <div class="rounded-xl border border-gray-100 p-4 bg-gray-50 space-y-2">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-gray-600">Estado del roster</p>
               <p id="adminEstado" class="text-sm font-medium text-gray-800">—</p>
             </div>
-            <button id="btnEstado"
-                    class="px-3 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-lg text-sm font-medium">
-              Actualizar estado
-            </button>
+            <div class="flex gap-2">
+              <button id="btnEstado"
+                      class="px-3 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-lg text-sm font-medium">
+                Actualizar estado
+              </button>
+              <button id="btnPing"
+                      class="px-3 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-lg text-sm font-medium">
+                Ping
+              </button>
+            </div>
+          </div>
+          <p id="adminPing" class="text-xs text-gray-500">—</p>
+        </div>
+
+        <!-- Vista previa por grupo -->
+        <div class="rounded-xl border border-gray-100 p-4">
+          <p class="text-sm text-gray-600 mb-2">Vista previa por grupo</p>
+          <input id="adminBuscarGrupo" class="w-full rounded-lg border-gray-300 focus:border-brand p-2 mb-2 text-sm"
+                 placeholder="Buscar grupo...">
+          <select id="adminGrupoSel" class="w-full rounded-lg border-gray-300 focus:border-brand p-2 text-sm mb-2">
+            <option value="" disabled selected>Selecciona un grupo</option>
+          </select>
+          <div id="adminGrupoCount" class="text-xs text-gray-500 mb-2">—</div>
+          <div id="adminAlumnosWrap" class="max-h-40 overflow-auto rounded-lg border border-gray-100">
+            <ul id="adminAlumnosList" class="text-sm divide-y divide-gray-100"></ul>
           </div>
         </div>
 
@@ -142,14 +176,28 @@
             Actualizar lista de alumnos
           </button>
 
+          <button id="btnRefresh"
+                  class="w-full bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold py-3 rounded-xl transition">
+            Refrescar datos ahora
+          </button>
+
+          <button id="btnExport"
+                  class="w-full bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold py-3 rounded-xl transition">
+            Exportar roster (JSON)
+          </button>
+
           <button id="btnSalir"
                   class="w-full bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold py-3 rounded-xl transition">
             Cerrar sesión admin
           </button>
         </div>
 
-        <!-- Mensajes -->
+        <!-- Mensajes / historial -->
         <p id="adminMsg" class="text-sm text-center text-gray-500"></p>
+        <div class="rounded-xl border border-gray-100 p-3 bg-gray-50">
+          <p class="text-xs text-gray-500 mb-1">Historial (local)</p>
+          <ul id="adminLog" class="text-xs text-gray-600 space-y-1"></ul>
+        </div>
       </div>
     </div>
   </div>
@@ -173,6 +221,17 @@ async function apiPOST(path, body){
   return r.json();
 }
 
+/* ======= Toasts ======= */
+function showToast(msg, type='info'){
+  const host = document.getElementById('toast');
+  const box  = document.getElementById('toastInner');
+  box.textContent = msg;
+  box.className = 'px-4 py-2 rounded-lg shadow-lg text-white text-sm ' + (type==='ok'?'bg-green-600':type==='err'?'bg-red-600':'bg-gray-800');
+  host.classList.remove('hidden');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>host.classList.add('hidden'), 2200);
+}
+
 /* ======= DOM ======= */
 const aviso        = document.getElementById('aviso');
 const modalidadSel = document.getElementById('modalidad');
@@ -192,6 +251,7 @@ const lon          = document.getElementById('lon');
 const uuid         = document.getElementById('uuid');
 const finger       = document.getElementById('finger');
 const rosterInfoEl = document.getElementById('rosterInfo');
+const logo         = document.getElementById('logo');
 
 // Admin modal
 const adminOverlay = document.getElementById('adminOverlay');
@@ -200,7 +260,15 @@ const adminMsg     = document.getElementById('adminMsg');
 const adminEstado  = document.getElementById('adminEstado');
 const btnFlush     = document.getElementById('btnFlush');
 const btnEstado    = document.getElementById('btnEstado');
+const btnRefresh   = document.getElementById('btnRefresh');
+const btnExport    = document.getElementById('btnExport');
 const btnSalir     = document.getElementById('btnSalir');
+const adminPing    = document.getElementById('adminPing');
+const adminBuscar  = document.getElementById('adminBuscarGrupo');
+const adminGrupoSel= document.getElementById('adminGrupoSel');
+const adminGrupoCount = document.getElementById('adminGrupoCount');
+const adminAlumnosList = document.getElementById('adminAlumnosList');
+const adminLogEl   = document.getElementById('adminLog');
 
 const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
@@ -209,6 +277,32 @@ const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 let ROSTER = {};                // { GRUPO: [alumnos] }
 let gruposNac = [], gruposInt = [];
 let ADMIN_PW = null;
+
+/* ======= Historial local (solo UI) ======= */
+const adminLog = [];
+function addAdminLog(txt){
+  const t = new Date();
+  adminLog.unshift(`${t.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${txt}`);
+  adminLog.splice(30);
+  adminLogEl.innerHTML = adminLog.map(x=>`<li>• ${x}</li>`).join('');
+}
+
+/* ======= Admin sesión 10 min ======= */
+function getSavedAdminPw(){
+  const exp = parseInt(sessionStorage.getItem('adminPwExp')||'0',10);
+  if (exp && exp > Date.now()) return sessionStorage.getItem('adminPw') || null;
+  sessionStorage.removeItem('adminPw'); sessionStorage.removeItem('adminPwExp');
+  return null;
+}
+function setAdminPw(pw){
+  ADMIN_PW = pw;
+  sessionStorage.setItem('adminPw', pw);
+  sessionStorage.setItem('adminPwExp', String(Date.now() + 10*60*1000));
+}
+function clearAdminPw(){
+  ADMIN_PW = null;
+  sessionStorage.removeItem('adminPw'); sessionStorage.removeItem('adminPwExp');
+}
 
 /* --- Normalizador robusto --- */
 function normalizaRoster(raw){
@@ -236,6 +330,10 @@ function normalizaRoster(raw){
   return out;
 }
 
+function contarAlumnos(obj){
+  return Object.values(obj||{}).reduce((n,a)=> n + (Array.isArray(a)?a.length:0), 0);
+}
+
 function usarRoster(info){
   ROSTER    = info.byGroup || {};
   gruposNac = info.nacionales || [];
@@ -257,9 +355,12 @@ function usarRoster(info){
   // Limpiar selects dependientes
   limpiar(cursoSel); limpiar(sistemaSel); limpiar(alumnoSel);
   cursoBox.classList.add('hidden'); sistemaBox.classList.add('hidden'); alumnoBox.classList.add('hidden');
+
+  // Rellenar panel (grupos)
+  buildAdminGroups();
 }
 
-/* ======= Cargar grupos SIEMPRE fresco (sin caché) ======= */
+/* ======= Cargar grupos SIEMPRE fresco ======= */
 async function cargarGrupos(){
   const raw  = await apiGET('/roster-get?ts=' + Date.now());
   const info = normalizaRoster(raw);
@@ -307,47 +408,139 @@ function cerrarAdmin(){
   adminOverlay.classList.remove('flex');
 }
 
+// Triple-tap en el logo si hay sesión admin
+let tapCount=0, tapTimer=null;
+logo.addEventListener('click', ()=>{
+  if (!getSavedAdminPw()) return;
+  tapCount++;
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(()=>tapCount=0, 1200);
+  if (tapCount>=3){ abrirAdmin(); tapCount=0; }
+});
+
 adminClose.addEventListener('click', cerrarAdmin);
-btnSalir.addEventListener('click', ()=>{ ADMIN_PW=null; cerrarAdmin(); });
+btnSalir.addEventListener('click', ()=>{ clearAdminPw(); addAdminLog('Cerraste sesión'); cerrarAdmin(); });
 
 btnEstado.addEventListener('click', async ()=>{
   try{
     adminMsg.textContent = 'Consultando estado...';
+    const t0 = performance.now();
     const data = await apiGET('/roster-get?ts=' + Date.now());
+    const t1 = performance.now();
     const info = normalizaRoster(data);
     const grupos = Object.keys(info.byGroup).length;
-    const alumnos = Object.values(info.byGroup).reduce((n,a)=>n + (Array.isArray(a)?a.length:0), 0);
+    const alumnos = contarAlumnos(info.byGroup);
     adminEstado.textContent =
       `Actualizado: ${new Date(info.updatedAt).toLocaleString('es-ES')} · v${info.version} · ${grupos} grupos · ${alumnos} alumnos`;
+    adminPing.textContent = `Lectura en ${Math.round(t1 - t0)} ms`;
     adminMsg.textContent = '';
+    addAdminLog('Consultaste estado del roster');
   }catch(e){
     adminMsg.textContent = 'No se pudo obtener el estado.';
+    showToast('No se pudo obtener el estado', 'err');
+  }
+});
+
+btnPing.addEventListener('click', async ()=>{
+  try{
+    const t0 = performance.now();
+    await apiGET('/roster-get?ts=' + Date.now());
+    const t1 = performance.now();
+    adminPing.textContent = `Lectura en ${Math.round(t1 - t0)} ms`;
+    addAdminLog('Ping de lectura');
+  }catch(e){
+    adminPing.textContent = 'Error en ping';
+  }
+});
+
+btnRefresh.addEventListener('click', async ()=>{
+  try{
+    const raw  = await apiGET('/roster-get?ts=' + Date.now());
+    const info = normalizaRoster(raw);
+    usarRoster(info);
+    addAdminLog('Refrescaste datos');
+    showToast('Datos refrescados', 'ok');
+  }catch{
+    showToast('No se pudo refrescar', 'err');
+  }
+});
+
+btnExport.addEventListener('click', async ()=>{
+  try{
+    const data = await apiGET('/roster-get?ts=' + Date.now());
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    const d = new Date();
+    const pad = n=>String(n).padStart(2,'0');
+    a.href = URL.createObjectURL(blob);
+    a.download = `roster-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    addAdminLog('Exportaste roster JSON');
+    showToast('Exportado roster.json', 'ok');
+  }catch{
+    showToast('No se pudo exportar', 'err');
   }
 });
 
 btnFlush.addEventListener('click', async ()=>{
-  if(!ADMIN_PW){ adminMsg.textContent = 'Falta la clave de admin.'; return; }
+  const pw = getSavedAdminPw() || ADMIN_PW;
+  if(!pw){ adminMsg.textContent = 'Falta la clave de admin.'; return; }
   try{
     adminMsg.textContent = 'Actualizando lista...';
-    const r = await apiPOST('/roster-flush', { pw: ADMIN_PW });
+    const r = await apiPOST('/roster-flush', { pw });
     if(r && r.status==='OK'){
       // Volver a leer roster fresco
       const raw  = await apiGET('/roster-get?ts=' + Date.now());
       const info = normalizaRoster(raw);
       usarRoster(info);
       const grupos = Object.keys(info.byGroup).length;
-      const alumnos = Object.values(info.byGroup).reduce((n,a)=>n + (Array.isArray(a)?a.length:0), 0);
+      const alumnos = contarAlumnos(info.byGroup);
       adminEstado.textContent =
         `Actualizado: ${new Date(info.updatedAt).toLocaleString('es-ES')} · v${info.version} · ${grupos} grupos · ${alumnos} alumnos`;
-      adminMsg.textContent = 'Lista actualizada correctamente.';
+      adminMsg.textContent = '';
+      addAdminLog('Actualizaste la lista (flush)');
+      showToast('Lista actualizada', 'ok');
       respuesta.value = '';
     }else{
       adminMsg.textContent = 'No autorizado.';
+      showToast('No autorizado', 'err');
     }
   }catch(e){
     adminMsg.textContent = 'Error de red al actualizar.';
+    showToast('Error de red', 'err');
   }
 });
+
+/* ======= Panel: vista previa por grupo ======= */
+function buildAdminGroups(){
+  // Rellenar selector y métricas
+  adminGrupoSel.innerHTML = '<option value="" disabled selected>Selecciona un grupo</option>';
+  const grupos = Object.keys(ROSTER).sort((a,b)=>a.localeCompare(b,'es'));
+  grupos.forEach(g=> adminGrupoSel.add(new Option(g,g)));
+  adminGrupoCount.textContent = `${grupos.length} grupos · ${contarAlumnos(ROSTER)} alumnos`;
+
+  // Filtrado por texto
+  adminBuscar.oninput = ()=>{
+    const q = adminBuscar.value.trim().toLowerCase();
+    adminGrupoSel.innerHTML = '<option value="" disabled selected>Selecciona un grupo</option>';
+    let count=0;
+    grupos.forEach(g=>{
+      if(!q || g.toLowerCase().includes(q)){
+        adminGrupoSel.add(new Option(g,g));
+        count++;
+      }
+    });
+    adminGrupoCount.textContent = `${count} grupos filtrados · ${contarAlumnos(ROSTER)} alumnos`;
+    adminAlumnosList.innerHTML = '';
+  };
+
+  // Cambio de grupo → listar alumnos
+  adminGrupoSel.onchange = ()=>{
+    const g = adminGrupoSel.value;
+    const lista = Array.isArray(ROSTER[g]) ? ROSTER[g] : [];
+    adminAlumnosList.innerHTML = lista.map(a=>`<li class="px-3 py-1">${a}</li>`).join('');
+  };
+}
 
 /* ======= Envío ======= */
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
@@ -358,14 +551,15 @@ form.addEventListener('submit', async e=>{
   // ¿Admin? -> abrir panel en lugar de actuar
   const maybePw = extraerPwAdmin(respuesta.value);
   if (maybePw){
-    ADMIN_PW = maybePw;
+    setAdminPw(maybePw);
+    addAdminLog('Iniciaste sesión admin');
     abrirAdmin();
     respuesta.value = '';
     return;
   }
 
   // Fichaje normal
-  if(!geoOk()){ alert('Necesitamos tu ubicación'); return; }
+  if(!geoOk()){ showToast('Necesitamos tu ubicación', 'err'); return; }
 
   btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviando…';
 
@@ -390,10 +584,27 @@ form.addEventListener('submit', async e=>{
       document.getElementById('resumen').textContent =
         `${alumnoSel.value} registrado el ${ahora.toLocaleDateString('es-ES')} a las ${ahora.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`;
       form.classList.add('hidden'); document.getElementById('ok').classList.remove('hidden');
+      showToast('Fichaje registrado', 'ok');
     }else{
-      alert('Error: '+(r && r.error ? r.error : 'desconocido')); desbloquea();
+      const msg = (r && r.error) ? r.error : 'desconocido';
+      // Si es “Duplicado reciente…”, muestra cuenta atrás
+      const m = /Duplicado reciente.*?(\d+)?/i.exec(msg);
+      if (m){
+        let s = 8; // valor orientativo del backend
+        const timer = setInterval(()=>{
+          btnEnviar.textContent = `Espera ${s}s…`;
+          if(--s<=0){ clearInterval(timer); desbloquea(); }
+        },1000);
+        showToast('Duplicado reciente, espera unos segundos', 'err');
+      }else{
+        showToast('Error: ' + msg, 'err');
+        desbloquea();
+      }
     }
-  }catch(err){ alert('Error de red'); desbloquea(); }
+  }catch(err){
+    showToast('Error de red', 'err');
+    desbloquea();
+  }
 });
 
 function desbloquea(){
@@ -406,7 +617,7 @@ window.addEventListener('load', async ()=>{
     modalidadSel.disabled = true;
     await cargarGrupos();
   }catch{
-    alert('Backend no accesible');
+    showToast('Backend no accesible', 'err');
   }
 
   ua.value = navigator.userAgent;
@@ -428,13 +639,21 @@ window.addEventListener('load', async ()=>{
     FingerprintJS.load().then(fp=>fp.get())
       .then(r=>finger.value=r.visitorId.slice(0,8)).catch(()=>{});
   }
+
+  // Recuperar sesión admin (si no caducó)
+  const saved = getSavedAdminPw();
+  if (saved) { ADMIN_PW = saved; addAdminLog('Sesión admin restaurada'); }
 });
 
-/* ======= Cerrar ======= */
+// Cerrar modal con ESC
+window.addEventListener('keydown', (ev)=>{
+  if (ev.key === 'Escape' && !adminOverlay.classList.contains('hidden')) cerrarAdmin();
+});
+
+/* ======= Cerrar (página) ======= */
 document.getElementById('cerrar').addEventListener('click',()=>{
-  if(!window.close()) alert('Puedes cerrar esta pestaña manualmente 🙂');
+  if(!window.close()) showToast('Puedes cerrar esta pestaña manualmente 🙂');
 });
 </script>
 </body>
 </html>
-
