@@ -3,14 +3,14 @@ const { resp, gsGet } = require('./_fetch');
 
 exports.handler = async () => {
   try {
-    // Intento: leer desde Blobs manual con siteID+token
+    // Intento: leer desde Blobs (modo manual)
     try {
       const { getStore } = await import('@netlify/blobs');
       const siteID = (process.env.NETLIFY_SITE_ID || '').trim();
       const token  = (process.env.NETLIFY_API_TOKEN || '').trim();
 
       if (siteID && token) {
-        const store = getStore('roster', { siteID, token });
+        const store = getStore({ name: 'roster', siteID, token }); // ← CORRECTO
         const data = await store.get('roster.json', { type: 'json' });
         if (data) {
           return {
@@ -29,7 +29,7 @@ exports.handler = async () => {
       console.info('roster-get: blobs not available:', e.message);
     }
 
-    // Fallback: solo grupos desde Apps Script
+    // Fallback: solo listas de grupos desde Apps Script (para no romper la web)
     const g = await gsGet({ action: 'grupos' });
     const out = {
       byGroup: {},
