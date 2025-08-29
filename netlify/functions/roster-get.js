@@ -3,7 +3,6 @@ const { resp } = require('./_fetch');
 
 exports.handler = async () => {
   try {
-    // Intentar leer roster.json de Netlify Blobs (modo manual con siteID + token)
     try {
       const { getStore } = await import('@netlify/blobs');
       const siteID = (process.env.NETLIFY_SITE_ID || '').trim();
@@ -24,7 +23,7 @@ exports.handler = async () => {
           };
         }
 
-        // JSON no existe o está vacío
+        // JSON no existe o vacío
         const out = {
           error: 'NO_ROSTER',
           byGroup: {},
@@ -48,7 +47,7 @@ exports.handler = async () => {
       console.info('roster-get: blobs not available:', e.message);
     }
 
-    // Si Blobs no está configurado, no devolvemos alumnos (sin plan B)
+    // Sin plan B: no devolvemos alumnos si no hay Blobs
     const out = {
       error: 'NO_ROSTER',
       byGroup: {},
