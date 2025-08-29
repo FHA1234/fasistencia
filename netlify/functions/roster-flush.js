@@ -1,7 +1,6 @@
 // netlify/functions/roster-flush.js
 const { resp, gsGet } = require('./_fetch');
 
-// Pequeño helper para pedir en paralelo con límite
 async function withLimit(items, limit, fn) {
   const out = new Array(items.length);
   let i = 0;
@@ -19,64 +18,52 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') return resp(405, { error: 'METHOD_NOT_ALLOWED' });
 
-    // ← Clave admin (recortada para evitar espacios)
-    const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || '').trim();
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+    const { pw = '' } = JSON.parse(event.body || '{}');
+    if (!ADMIN_PASSWORD || pw !== ADMIN_PASSWORD) return resp(403, { error: 'FORBIDDEN' });
 
-    // ← Cuerpo recibido (recortamos también)
-    let body = {};
-    try { body = JSON.parse(event.body || '{}'); } catch {}
-    const pw = String(body.pw || '').trim();
-
-    if (!ADMIN_PASSWORD) {
-      return resp(500, { error: 'ADMIN_PASSWORD_NOT_SET' });
-    }
-    if (pw !== ADMIN_PASSWORD) {
-      return resp(403, { error: 'FORBIDDEN' });
-    }
-
-    // 1) Pide SOLO los grupos
+    // 1) Obtener listas de grupos
     const g = await gsGet({ action: 'grupos' });
     const nacionales = Array.isArray(g.nacionales) ? g.nacionales : [];
     const internacionales = Array.isArray(g.internacionales) ? g.internacionales : [];
     const allGroups = [...nacionales, ...internacionales];
 
-    // 2) Pide alumnos por grupo (paralelo con límite 5)
-    const pairs = await withLimit(allGroups, 5, async (grupo) => {
-      try {
-        const arr = await gsGet({ action: 'alumnos', grupo });
-        return [grupo, Array.isArray(arr) ? arr : []];
-      } catch (e) {
-        console.error('alumnos error', grupo, e.message);
-        return [grupo, []];
-      }
+    // 2) Construir byGroup pidiendo alumnos en paralelo (límite 6)
+    const pairs = await withLimit(allGroups, 6, async (grupo) => {
+      const arr = await gsGet({ action: 'alumnos', grupo });
+      return [grupo, Array.isArray(arr) ? arr : []];
     });
 
-    const byGroup = Object.fromEntries(pairs);
     const roster = {
-      byGroup,
-      nacionales,
-      internacionales,
+      byGroup: Object.fromEntries(pairs),
+      nacionales, internacionales,
       version: Date.now(),
       updatedAt: new Date().toISOString()
     };
 
-    // 3) Guarda en Netlify Blobs (modo manual con siteID/token)
+    // 3) Guardar en Netlify Blobs (modo manual con siteID + token)
     try {
       const { getStore } = await import('@netlify/blobs');
-      const store = getStore('roster', {
-        siteID: process.env.NETLIFY_SITE_ID,
-        token: process.env.NETLIFY_API_TOKEN
+      const siteID = process.env.NETLIFY_SITE_ID;
+      const token  = process.env.NETLIFY_API_TOKEN;
+
+      if (!siteID || !token) {
+        console.log('blobs manual not configured (missing NETLIFY_SITE_ID or NETLIFY_API_TOKEN)');
+        return resp(500, { error: 'BLOBS_NOT_CONFIGURED' });
+      }
+
+      const store = getStore('roster', { siteID, token });
+      await store.set('roster.json', JSON.stringify(roster), {
+        metadata: { updatedAt: roster.updatedAt, version: String(roster.version) }
       });
-      await store.setJSON('roster.json', roster);
     } catch (e) {
-      console.error('save blobs error:', e.message);
-      // No abortamos: devolveremos OK igualmente (el front puede vivir con el fallback)
+      console.error('roster-flush write error:', e);
+      return resp(502, { error: 'BLOBS_WRITE_FAILED' });
     }
 
-    return resp(200, { status: 'OK', version: roster.version, grupos: allGroups.length });
+    return resp(200, { status:'OK', version: roster.version, grupos: allGroups.length });
   } catch (e) {
-    console.error('roster-flush fatal:', e);
+    console.error('roster-flush error:', e);
     return resp(502, { error: 'BACKEND_UNAVAILABLE' });
   }
 };
-
