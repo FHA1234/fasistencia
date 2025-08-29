@@ -196,13 +196,11 @@ function usarRoster(info){
 
 /* carga con caché local (opcional) + lectura desde roster-get (CDN) */
 function cargarGrupos(){
-  // 1) Si hay caché local, úsala para pintar rápido
   try{
     const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
     if (cached && cached.data) usarRoster(normalizaRoster(cached.data));
   }catch{}
 
-  // 2) Siempre pedimos al servidor la última versión (rápido, CDN)
   apiGET('/roster-get')
     .then(raw=>{
       const info = normalizaRoster(raw);
@@ -231,7 +229,7 @@ modalidadSel.addEventListener('change',()=>{
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
-/* ======= Aceleración alumnos: ROSTER si existe, si no plan B por red ======= */
+/* ======= Aceleración alumnos: usa ROSTER si está; si no, plan B por red ======= */
 let alumnosAbort = null;
 function setLoadingAlumnos(){
   limpiar(alumnoSel);
@@ -245,7 +243,6 @@ async function cargarAlumnos(grupo){
   alumnoBox.classList.add('hidden');
   alumnoSel.disabled = true;
 
-  // 1) Si ya vino precargado en ROSTER (tras @admin), instantáneo
   const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
   if (precargado && precargado.length){
     limpiar(alumnoSel); poblar(alumnoSel, precargado);
@@ -253,7 +250,6 @@ async function cargarAlumnos(grupo){
     return;
   }
 
-  // 2) Plan B: pedir solo ese grupo (rápido) a la función /alumnos
   setLoadingAlumnos();
   if (alumnosAbort) alumnosAbort.abort();
   alumnosAbort = new AbortController();
@@ -263,7 +259,7 @@ async function cargarAlumnos(grupo){
     limpiar(alumnoSel); poblar(alumnoSel, Array.isArray(arr)?arr:[]);
   }catch(e){
     if (!(e && e.name === 'AbortError')) {
-      limpiar(alumnoSel); // deja el select limpio ante error
+      limpiar(alumnoSel);
     }
   }finally{
     alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
@@ -273,7 +269,7 @@ async function cargarAlumnos(grupo){
 /* ======= Admin: SOLO con "@admin <clave>" ======= */
 function extraerPwAdmin(texto){
   const m = /^@admin\s+(.+)$/i.exec((texto||'').trim());
-  return m ? m[1] : null;
+  return m ? m[1].trim() : null; // ← recortamos aquí también
 }
 
 /* ======= Envío ======= */
@@ -283,18 +279,35 @@ form.addEventListener('submit', async e=>{
   e.preventDefault();
 
   // ¿Admin?
-  const adminPw = extraerPwAdmin(respuesta.value);
-  if (adminPw){
+  const adminPwRaw = extraerPwAdmin(respuesta.value);
+  if (adminPwRaw){
+    const adminPw = adminPwRaw.trim();
     try{
-      btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Actualizando…';
-      const r = await apiPOST('/roster-flush', { pw: adminPw });
-      if (r && r.status === 'OK'){
+      btnEnviar.disabled=true;
+      btnEnviar.classList.add('opacity-60','cursor-not-allowed');
+      btnEnviar.textContent='Actualizando…';
+
+      // Llamada directa para poder leer status y error del servidor
+      const res = await fetch('/.netlify/functions/roster-flush', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ pw: adminPw })
+      });
+
+      const text = await res.text(); let data;
+      try { data = JSON.parse(text); } catch { data = null; }
+
+      if(!res.ok){
+        alert(`Admin falló (${res.status}): ${data?.error || text || 'sin detalle'}`);
+        return;
+      }
+      if(data && data.status === 'OK'){
         alert('Lista actualizada');
         try { localStorage.removeItem(LS_KEY); } catch {}
         respuesta.value = '';
         cargarGrupos(); // vuelve a leer roster-get ya regenerado
       }else{
-        alert('No autorizado');
+        alert(`Admin: ${data?.error || 'respuesta inválida'}`);
       }
     }catch{ alert('Error de red'); }
     finally{ desbloquea(); }
@@ -370,5 +383,4 @@ document.getElementById('cerrar').addEventListener('click',()=>{
 </script>
 </body>
 </html>
-
 
