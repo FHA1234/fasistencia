@@ -1,65 +1,44 @@
 const { resp, gsGet } = require('./_fetch');
 
-// pool de concurrencia
-async function withLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let i = 0;
-  const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
-    while (i < items.length) {
-      const idx = i++;
-      out[idx] = await fn(items[idx], idx);
-    }
-  });
-  await Promise.all(runners);
-  return out;
-}
-
-exports.handler = async (event) => {
+exports.handler = async () => {
   try {
-    if (event.httpMethod !== 'POST') return resp(405, { error: 'METHOD_NOT_ALLOWED' });
+    // Leer de Blobs en modo manual (siteID + token)
+    let data = null;
+    try {
+      const { getStore } = await import('@netlify/blobs');
+      const store = getStore('roster', {
+        siteID: process.env.NETLIFY_SITE_ID,
+        token: process.env.NETLIFY_API_TOKEN
+      });
+      data = await store.get('roster.json', { type: 'json' });
+    } catch (e) {
+      console.log('blobs not available:', e.message);
+    }
 
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-    const { pw = '' } = JSON.parse(event.body || '{}');
-    if (!ADMIN_PASSWORD || pw !== ADMIN_PASSWORD) return resp(403, { error: 'FORBIDDEN' });
+    if (data) {
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=60, s-maxage=300'
+        },
+        body: JSON.stringify(data)
+      };
+    }
 
-    console.log('flush start');
-
-    // 1) grupos
+    // Fallback: solo grupos desde Apps Script (para no romper la web)
     const g = await gsGet({ action: 'grupos' });
-    const nacionales = Array.isArray(g.nacionales) ? g.nacionales : [];
-    const internacionales = Array.isArray(g.internacionales) ? g.internacionales : [];
-    const allGroups = [...nacionales, ...internacionales];
-    console.log('grupos totales:', allGroups.length);
-
-    // 2) alumnos (límite 5)
-    const pairs = await withLimit(allGroups, 5, async (grupo) => {
-      const arr = await gsGet({ action: 'alumnos', grupo });
-      return [grupo, Array.isArray(arr) ? arr : []];
-    });
-
-    const byGroup = Object.fromEntries(pairs);
-    const totalAlumnos = Object.values(byGroup).reduce((n,a)=>n + a.length, 0);
-    console.log('alumnos totales:', totalAlumnos);
-
-    const roster = {
-      byGroup, nacionales, internacionales,
-      version: Date.now(), updatedAt: new Date().toISOString()
+    const out = {
+      byGroup: {},
+      nacionales: Array.isArray(g.nacionales) ? g.nacionales : [],
+      internacionales: Array.isArray(g.internacionales) ? g.internacionales : [],
+      version: Date.now(),
+      updatedAt: new Date().toISOString()
     };
 
-    // 3) guardar en Netlify Blobs (modo manual con siteID+token)
-    const { getStore } = await import('@netlify/blobs');
-    const store = getStore('roster', {
-      siteID: process.env.NETLIFY_SITE_ID,
-      token: process.env.NETLIFY_API_TOKEN
-    });
-
-    console.log('saving to blobs...');
-    await store.setJSON('roster.json', roster);
-
-    console.log('flush done', { version: roster.version });
-    return resp(200, { status:'OK', version: roster.version, grupos: allGroups.length, alumnos: totalAlumnos, updatedAt: roster.updatedAt });
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(out) };
   } catch (e) {
-    console.error('roster-flush error:', e);
+    console.error('roster-get error:', e);
     return resp(502, { error: 'BACKEND_UNAVAILABLE' });
   }
 };
