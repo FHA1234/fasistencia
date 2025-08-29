@@ -1,37 +1,41 @@
 // netlify/functions/_fetch.js
-const APPS = process.env.APPS_SCRIPT_URL || '';
-const SERVER_SECRET = process.env.SERVER_SECRET || '';
+const BASE = process.env.APPS_SCRIPT_URL;       // p.ej. https://script.google.com/macros/s/XXX/exec
+const SECRET = process.env.SERVER_SECRET;       // Debe coincidir con props.getProperty('SERVER_SECRET') en Code.gs
 
-const JSON_HEADERS = { 'Content-Type': 'application/json' };
-const qs = (obj) => new URLSearchParams(obj).toString();
+function resp(status, data) {
+  return {
+    statusCode: status,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  };
+}
 
-const resp = (statusCode, bodyObj) => ({
-  statusCode,
-  headers: JSON_HEADERS,
-  body: JSON.stringify(bodyObj)
-});
+function buildUrl(params = {}) {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) usp.set(k, String(v));
+  }
+  if (SECRET) usp.set('server_secret', SECRET);
+  return `${BASE}?${usp.toString()}`;
+}
 
-// GET -> doGet(e): añade server_secret como query
-const gsGet = async (params = {}) => {
-  if (!APPS) throw new Error('APPS_SCRIPT_URL missing');
-  const url = `${APPS}?${qs({ ...params, server_secret: SERVER_SECRET })}`;
+async function gsGet(params) {
+  const url = buildUrl(params);
   const r = await fetch(url, { method: 'GET' });
-  const text = await r.text();
-  try { return JSON.parse(text); }
-  catch (e) { throw new Error('AppsScript non-JSON: ' + text.slice(0, 140)); }
-};
+  if (!r.ok) throw new Error(`GS_GET ${r.status}`);
+  return r.json();
+}
 
-// POST -> doPost(e): JSON con server_secret en el body
-const gsPost = async (body = {}) => {
-  if (!APPS) throw new Error('APPS_SCRIPT_URL missing');
-  const r = await fetch(APPS, {
+async function gsPost(body) {
+  const payload = Object.assign({}, body || {}, { server_secret: SECRET || '' });
+  const r = await fetch(BASE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...body, server_secret: SERVER_SECRET })
+    body: JSON.stringify(payload),
   });
-  const text = await r.text();
-  try { return JSON.parse(text); }
-  catch (e) { throw new Error('AppsScript non-JSON: ' + text.slice(0, 140)); }
-};
+  if (!r.ok) throw new Error(`GS_POST ${r.status}`);
+  return r.json();
+}
 
 module.exports = { resp, gsGet, gsPost };
+
