@@ -1,5 +1,5 @@
 // netlify/functions/roster-flush.js
-const { resp, gsGet } = require('./_fetch');
+const { resp, gsGet, gsPost } = require('./_fetch');
 
 async function withLimit(items, limit, fn) {
   const out = new Array(items.length);
@@ -20,15 +20,28 @@ exports.handler = async (event) => {
 
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
     const { pw = '' } = JSON.parse(event.body || '{}');
+
+    // Autorización de la función Netlify
     if (!ADMIN_PASSWORD || pw !== ADMIN_PASSWORD) return resp(403, { error: 'FORBIDDEN' });
 
-    // 1) grupos
+    // 0) Forzar a Apps Script a refrescar su caché desde la hoja
+    try {
+      const f = await gsPost({ action: 'flush', pw }); // usamos la misma clave que tecleó el admin
+      if (f && f.error) {
+        console.warn('Apps Script flush returned error:', f.error);
+        // seguimos, porque igual los endpoints grupos/alumnos ya dan datos frescos
+      }
+    } catch (e) {
+      console.warn('Apps Script flush failed (continuing anyway):', e.message);
+    }
+
+    // 1) Pedir listas de grupos
     const g = await gsGet({ action: 'grupos' });
     const nacionales = Array.isArray(g.nacionales) ? g.nacionales : [];
     const internacionales = Array.isArray(g.internacionales) ? g.internacionales : [];
     const allGroups = [...nacionales, ...internacionales];
 
-    // 2) alumnos por grupo (paralelo con límite)
+    // 2) Pedir alumnos por grupo en paralelo (tras el flush)
     const pairs = await withLimit(allGroups, 6, async (grupo) => {
       const arr = await gsGet({ action: 'alumnos', grupo });
       return [grupo, Array.isArray(arr) ? arr : []];
@@ -41,7 +54,7 @@ exports.handler = async (event) => {
       updatedAt: new Date().toISOString()
     };
 
-    // 3) escribir en Blobs (modo manual: objeto con name/siteID/token)
+    // 3) Guardar en Netlify Blobs (modo manual)
     try {
       const { getStore } = await import('@netlify/blobs');
       const siteID = (process.env.NETLIFY_SITE_ID || '').trim();
@@ -52,7 +65,7 @@ exports.handler = async (event) => {
         return resp(500, { error: 'BLOBS_NOT_CONFIGURED' });
       }
 
-      const store = getStore({ name: 'roster', siteID, token });   // ← CORRECTO
+      const store = getStore({ name: 'roster', siteID, token });
       await store.set('roster.json', JSON.stringify(roster), {
         metadata: { updatedAt: roster.updatedAt, version: String(roster.version) }
       });
