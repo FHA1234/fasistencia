@@ -6,21 +6,22 @@
   <title>Fichaje de Asistencia</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { theme:{ extend:{ colors:{ brand:{ DEFAULT:'#2563eb', dark:'#1e40af' }}}}};
+    tailwind.config = { theme:{ extend:{ colors:{ brand:{ DEFAULT:'#2563eb', dark:'#1e40af' }}, borderRadius:{ '2xl':'1rem' }}}};
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js" defer></script>
 </head>
 
 <body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
   <div class="w-full max-w-md">
-    <div id="card" class="bg-white shadow-xl rounded-2xl p-8 space-y-4 transition-all duration-300">
+    <div id="card" class="bg-white shadow-xl rounded-2xl p-8 space-y-5 transition-all duration-300">
       <img id="logo" src="https://marcetfootball.com/wp-content/uploads/2023/03/Marcet-football-university@4x.png"
            class="mx-auto h-20 w-auto" alt="Logo Marcet">
+
       <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
 
       <!-- Aviso (sin roster) -->
       <div id="aviso" class="hidden text-sm rounded-lg p-3 bg-yellow-50 text-yellow-700 border border-yellow-200">
-        La lista de alumnos no está disponible todavía. Pide a un responsable actualizarla.
+        La lista de alumnos no está disponible todavía. Solicita al responsable que la actualice.
       </div>
 
       <!-- ============ FORMULARIO ============ -->
@@ -105,6 +106,54 @@
     </div>
   </div>
 
+  <!-- ======= MODAL ADMIN ======= -->
+  <div id="adminOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl">
+      <div class="flex items-center justify-between px-5 pt-5">
+        <h3 class="text-xl font-bold text-gray-800">Panel de administrador</h3>
+        <button id="adminClose" class="text-gray-400 hover:text-gray-600 p-2" aria-label="Cerrar">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="px-5 pb-5 space-y-4">
+        <!-- Estado -->
+        <div class="rounded-xl border border-gray-100 p-4 bg-gray-50">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-600">Estado del roster</p>
+              <p id="adminEstado" class="text-sm font-medium text-gray-800">—</p>
+            </div>
+            <button id="btnEstado"
+                    class="px-3 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-lg text-sm font-medium">
+              Actualizar estado
+            </button>
+          </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="grid grid-cols-1 gap-3">
+          <button id="btnFlush"
+                  class="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-3 rounded-xl transition">
+            Actualizar lista de alumnos
+          </button>
+
+          <button id="btnSalir"
+                  class="w-full bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold py-3 rounded-xl transition">
+            Cerrar sesión admin
+          </button>
+        </div>
+
+        <!-- Mensajes -->
+        <p id="adminMsg" class="text-sm text-center text-gray-500"></p>
+      </div>
+    </div>
+  </div>
+
 <script>
 /* ======= API helpers ======= */
 const API_BASE = '/.netlify/functions';
@@ -125,23 +174,33 @@ async function apiPOST(path, body){
 }
 
 /* ======= DOM ======= */
-const aviso      = document.getElementById('aviso');
+const aviso        = document.getElementById('aviso');
 const modalidadSel = document.getElementById('modalidad');
-const cursoBox   = document.getElementById('cursoBox');
-const cursoSel   = document.getElementById('curso');
-const sistemaBox = document.getElementById('sistemaBox');
-const sistemaSel = document.getElementById('sistema');
-const alumnoBox  = document.getElementById('alumnoBox');
-const alumnoSel  = document.getElementById('alumno');
-const form       = document.getElementById('form');
-const btnEnviar  = document.getElementById('btnEnviar');
-const respuesta  = document.getElementById('respuesta');
-const ua         = document.getElementById('ua');
-const ip         = document.getElementById('ip');
-const lat        = document.getElementById('lat');
-const lon        = document.getElementById('lon');
-const uuid       = document.getElementById('uuid');
-const finger     = document.getElementById('finger');
+const cursoBox     = document.getElementById('cursoBox');
+const cursoSel     = document.getElementById('curso');
+const sistemaBox   = document.getElementById('sistemaBox');
+const sistemaSel   = document.getElementById('sistema');
+const alumnoBox    = document.getElementById('alumnoBox');
+const alumnoSel    = document.getElementById('alumno');
+const form         = document.getElementById('form');
+const btnEnviar    = document.getElementById('btnEnviar');
+const respuesta    = document.getElementById('respuesta');
+const ua           = document.getElementById('ua');
+const ip           = document.getElementById('ip');
+const lat          = document.getElementById('lat');
+const lon          = document.getElementById('lon');
+const uuid         = document.getElementById('uuid');
+const finger       = document.getElementById('finger');
+const rosterInfoEl = document.getElementById('rosterInfo');
+
+// Admin modal
+const adminOverlay = document.getElementById('adminOverlay');
+const adminClose   = document.getElementById('adminClose');
+const adminMsg     = document.getElementById('adminMsg');
+const adminEstado  = document.getElementById('adminEstado');
+const btnFlush     = document.getElementById('btnFlush');
+const btnEstado    = document.getElementById('btnEstado');
+const btnSalir     = document.getElementById('btnSalir');
 
 const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
@@ -149,6 +208,7 @@ const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 /* ======= ROSTER en memoria ======= */
 let ROSTER = {};                // { GRUPO: [alumnos] }
 let gruposNac = [], gruposInt = [];
+let ADMIN_PW = null;
 
 /* --- Normalizador robusto --- */
 function normalizaRoster(raw){
@@ -181,8 +241,9 @@ function usarRoster(info){
   gruposNac = info.nacionales || [];
   gruposInt = info.internacionales || [];
 
-  const span = document.getElementById('rosterInfo');
-  if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
+  if (rosterInfoEl && info.updatedAt) {
+    rosterInfoEl.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
+  }
 
   const tieneAlumnos = ROSTER && Object.keys(ROSTER).length > 0;
 
@@ -200,14 +261,9 @@ function usarRoster(info){
 
 /* ======= Cargar grupos SIEMPRE fresco (sin caché) ======= */
 async function cargarGrupos(){
-  try{
-    const raw  = await apiGET('/roster-get?ts=' + Date.now());
-    const info = normalizaRoster(raw);
-    usarRoster(info);
-  }catch(e){
-    alert('Backend no accesible'); console.error(e);
-    usarRoster({ byGroup:{}, nacionales:[], internacionales:[] });
-  }
+  const raw  = await apiGET('/roster-get?ts=' + Date.now());
+  const info = normalizaRoster(raw);
+  usarRoster(info);
 }
 
 /* ======= Combos dependientes (solo desde ROSTER) ======= */
@@ -236,11 +292,62 @@ function cargarAlumnos(grupo){
   alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
 }
 
-/* ======= Admin oculto: "@admin <clave>" ======= */
+/* ======= Admin: detectar "@admin <clave>" y abrir modal ======= */
 function extraerPwAdmin(texto){
   const m = /^@admin\s+(.+)$/i.exec((texto||'').trim());
   return m ? m[1] : null;
 }
+function abrirAdmin(){
+  adminMsg.textContent = '';
+  adminOverlay.classList.remove('hidden');
+  adminOverlay.classList.add('flex');
+}
+function cerrarAdmin(){
+  adminOverlay.classList.add('hidden');
+  adminOverlay.classList.remove('flex');
+}
+
+adminClose.addEventListener('click', cerrarAdmin);
+btnSalir.addEventListener('click', ()=>{ ADMIN_PW=null; cerrarAdmin(); });
+
+btnEstado.addEventListener('click', async ()=>{
+  try{
+    adminMsg.textContent = 'Consultando estado...';
+    const data = await apiGET('/roster-get?ts=' + Date.now());
+    const info = normalizaRoster(data);
+    const grupos = Object.keys(info.byGroup).length;
+    const alumnos = Object.values(info.byGroup).reduce((n,a)=>n + (Array.isArray(a)?a.length:0), 0);
+    adminEstado.textContent =
+      `Actualizado: ${new Date(info.updatedAt).toLocaleString('es-ES')} · v${info.version} · ${grupos} grupos · ${alumnos} alumnos`;
+    adminMsg.textContent = '';
+  }catch(e){
+    adminMsg.textContent = 'No se pudo obtener el estado.';
+  }
+});
+
+btnFlush.addEventListener('click', async ()=>{
+  if(!ADMIN_PW){ adminMsg.textContent = 'Falta la clave de admin.'; return; }
+  try{
+    adminMsg.textContent = 'Actualizando lista...';
+    const r = await apiPOST('/roster-flush', { pw: ADMIN_PW });
+    if(r && r.status==='OK'){
+      // Volver a leer roster fresco
+      const raw  = await apiGET('/roster-get?ts=' + Date.now());
+      const info = normalizaRoster(raw);
+      usarRoster(info);
+      const grupos = Object.keys(info.byGroup).length;
+      const alumnos = Object.values(info.byGroup).reduce((n,a)=>n + (Array.isArray(a)?a.length:0), 0);
+      adminEstado.textContent =
+        `Actualizado: ${new Date(info.updatedAt).toLocaleString('es-ES')} · v${info.version} · ${grupos} grupos · ${alumnos} alumnos`;
+      adminMsg.textContent = 'Lista actualizada correctamente.';
+      respuesta.value = '';
+    }else{
+      adminMsg.textContent = 'No autorizado.';
+    }
+  }catch(e){
+    adminMsg.textContent = 'Error de red al actualizar.';
+  }
+});
 
 /* ======= Envío ======= */
 function geoOk(){ return lat.value!=='' && lon.value!==''; }
@@ -248,25 +355,13 @@ function geoOk(){ return lat.value!=='' && lon.value!==''; }
 form.addEventListener('submit', async e=>{
   e.preventDefault();
 
-  // ¿Admin?
-  const adminPw = extraerPwAdmin(respuesta.value);
-  if (adminPw){
-    try{
-      btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Actualizando…';
-      const r = await apiPOST('/roster-flush', { pw: adminPw });
-      if (r && r.status === 'OK'){
-        // Leer de nuevo el roster FRESCO
-        const raw  = await apiGET('/roster-get?ts=' + Date.now());
-        const info = normalizaRoster(raw);
-        usarRoster(info);
-        respuesta.value = '';
-        alert('Lista actualizada');
-      }else{
-        alert('No autorizado');
-      }
-    }catch{ alert('Error de red'); }
-    finally{ desbloquea(); }
-    return; // NO registrar asistencia cuando es admin
+  // ¿Admin? -> abrir panel en lugar de actuar
+  const maybePw = extraerPwAdmin(respuesta.value);
+  if (maybePw){
+    ADMIN_PW = maybePw;
+    abrirAdmin();
+    respuesta.value = '';
+    return;
   }
 
   // Fichaje normal
@@ -306,9 +401,13 @@ function desbloquea(){
 }
 
 /* ======= Inicialización ======= */
-window.addEventListener('load',()=>{
-  modalidadSel.disabled = true;
-  cargarGrupos();
+window.addEventListener('load', async ()=>{
+  try{
+    modalidadSel.disabled = true;
+    await cargarGrupos();
+  }catch{
+    alert('Backend no accesible');
+  }
 
   ua.value = navigator.userAgent;
   fetch('https://api.ipify.org?format=json')
@@ -338,3 +437,4 @@ document.getElementById('cerrar').addEventListener('click',()=>{
 </script>
 </body>
 </html>
+
