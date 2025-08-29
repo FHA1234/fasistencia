@@ -4,9 +4,9 @@ const { resp, gsPost } = require('./_fetch');
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== 'POST') return resp(405, { error: 'METHOD_NOT_ALLOWED' });
-    const payload = JSON.parse(event.body || '{}');
-    // Apps Script nuevo: POST { action:'registro', ... }
-    const data = await gsPost({ action: 'registro', ...payload });
+    const body = JSON.parse(event.body || '{}');
+    // Envía TODO a Apps Script junto con server_secret (gsPost lo añade)
+    const data = await gsPost({ action: 'registro', ...body });
     return resp(200, data);
   } catch (e) {
     console.error('registro error:', e);
