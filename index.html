@@ -192,7 +192,6 @@
           </button>
         </div>
 
-        <!-- Mensajes / historial -->
         <p id="adminMsg" class="text-sm text-center text-gray-500"></p>
         <div class="rounded-xl border border-gray-100 p-3 bg-gray-50">
           <p class="text-xs text-gray-500 mb-1">Historial (local)</p>
@@ -202,12 +201,12 @@
     </div>
   </div>
 
-  <!-- ======= MODAL SALIDAS ======= -->
+  <!-- ======= MODAL SALIDAS (multi-alumno) ======= -->
   <div id="salidasOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-    <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl">
-      <div class="flex items-center justify-between px-5 pt-5">
-        <h3 class="text-xl font-bold text-gray-800">Panel de salidas de clase de un alumno</h3>
-        <button id="salidasClose" class="text-gray-400 hover:text-gray-600 p-2" aria-label="Cerrar">
+    <div class="w-full max-w-lg bg-white rounded-2xl shadow-2xl">
+      <div class="relative flex items-center justify-center px-5 pt-5">
+        <h3 class="text-xl font-bold text-gray-800 text-center">Registro de salidas de los alumnos</h3>
+        <button id="salidasClose" class="text-gray-400 hover:text-gray-600 p-2 absolute right-4 top-4" aria-label="Cerrar">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round"
@@ -217,54 +216,30 @@
       </div>
 
       <div class="px-5 pb-5 space-y-4">
-        <!-- Modalidad -->
-        <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1">Modalidad</label>
-          <select id="salModalidad" class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
-            <option value="" disabled selected>SELECCIONA MODALIDAD</option>
-            <option value="NACIONAL">NACIONAL</option>
-            <option value="INTERNACIONAL">INTERNACIONAL</option>
-          </select>
-        </div>
+        <!-- Lista dinámica de líneas de alumno -->
+        <div id="salLines" class="space-y-3"></div>
 
-        <!-- Curso/Sistema -->
-        <div id="salCursoBox" class="hidden">
-          <label class="block text-sm font-medium text-gray-600 mb-1">Curso o Grupo</label>
-          <select id="salCursoSel" class="w-full rounded-lg border-gray-300 focus:border-brand p-3" disabled>
-            <option value="" disabled selected>SELECCIONA TU CURSO</option>
-          </select>
-        </div>
-        <div id="salSistemaBox" class="hidden">
-          <label class="block text-sm font-medium text-gray-600 mb-1">Sistema educativo</label>
-          <select id="salSistemaSel" class="w-full rounded-lg border-gray-300 focus:border-brand p-3" disabled>
-            <option value="" disabled selected>SELECCIONA SISTEMA</option>
-          </select>
-        </div>
-
-        <!-- Alumno -->
-        <div id="salAlumnoBox" class="hidden">
-          <label class="block text-sm font-medium text-gray-600 mb-1">Alumno</label>
-          <select id="salAlumnoSel" class="w-full rounded-lg border-gray-300 focus:border-brand p-3" disabled>
-            <option value="" disabled selected>SELECCIONA ALUMNO</option>
-          </select>
+        <div class="flex justify-between">
+          <button id="btnSalidaAdd"
+                  class="px-3 py-2 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 rounded-lg text-sm font-medium">
+            + Añadir alumno
+          </button>
+          <div class="text-xs text-gray-500 self-center" id="salResumen">0 seleccionados</div>
         </div>
 
         <!-- Motivo -->
         <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1">Motivo de la salida</label>
+          <label class="block text-sm font-medium text-gray-600 mb-1 text-center">Motivo de la salida</label>
           <textarea id="salMotivo" rows="3"
-            class="w-full rounded-lg border-gray-300 focus:border-brand p-3 text-sm"
+            class="w-full rounded-lg border-gray-300 focus:border-brand p-3 text-sm text-center"
             placeholder="Indique la hora y el motivo por el cual el alumno sale de clase"></textarea>
-          <p class="text-xs text-gray-500 mt-1">
-            Se registrará como <span class="font-mono">RESPUESTA = "SALIDA: &lt;motivo&gt;"</span>.
-          </p>
         </div>
 
         <!-- Acciones -->
         <div class="grid grid-cols-1 gap-3">
           <button id="btnSalidaEnviar"
                   class="w-full bg-brand hover:bg-brand-dark text-white font-semibold py-3 rounded-xl transition">
-            Enviar salida
+            Enviar salidas
           </button>
           <button id="btnSalidaCancelar"
                   class="w-full bg-white border border-gray-200 hover:border-gray-300 text-gray-700 font-semibold py-3 rounded-xl transition">
@@ -345,20 +320,16 @@ const adminGrupoCount = document.getElementById('adminGrupoCount');
 const adminAlumnosList = document.getElementById('adminAlumnosList');
 const adminLogEl   = document.getElementById('adminLog');
 
-// Salidas modal
+// Salidas modal (multi)
 const salidasOverlay = document.getElementById('salidasOverlay');
 const salidasClose   = document.getElementById('salidasClose');
 const salidasMsg     = document.getElementById('salidasMsg');
-const salModalidad   = document.getElementById('salModalidad');
-const salCursoBox    = document.getElementById('salCursoBox');
-const salCursoSel    = document.getElementById('salCursoSel');
-const salSistemaBox  = document.getElementById('salSistemaBox');
-const salSistemaSel  = document.getElementById('salSistemaSel');
-const salAlumnoBox   = document.getElementById('salAlumnoBox');
-const salAlumnoSel   = document.getElementById('salAlumnoSel');
 const salMotivo      = document.getElementById('salMotivo');
 const btnSalidaEnviar= document.getElementById('btnSalidaEnviar');
 const btnSalidaCancelar = document.getElementById('btnSalidaCancelar');
+const btnSalidaAdd   = document.getElementById('btnSalidaAdd');
+const salLines       = document.getElementById('salLines');
+const salResumen     = document.getElementById('salResumen');
 
 const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
@@ -419,11 +390,9 @@ function normalizaRoster(raw){
   }
   return out;
 }
-
 function contarAlumnos(obj){
   return Object.values(obj||{}).reduce((n,a)=> n + (Array.isArray(a)?a.length:0), 0);
 }
-
 function usarRoster(info){
   ROSTER    = info.byGroup || {};
   gruposNac = info.nacionales || [];
@@ -449,11 +418,10 @@ function usarRoster(info){
   // Rellenar panel admin (grupos)
   buildAdminGroups();
 
-  // Prepara combos del panel de salidas
-  buildSalidasCombos();
+  // No hace falta preparar aquí salidas; se hace por línea
 }
 
-/* ======= Cargar grupos SIEMPRE fresco ======= */
+/* ======= Cargar grupos ======= */
 async function cargarGrupos(){
   const raw  = await apiGET('/roster-get?ts=' + Date.now());
   const info = normalizaRoster(raw);
@@ -475,12 +443,10 @@ modalidadSel.addEventListener('change',()=>{
 });
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
-
 function cargarAlumnos(grupo){
   if(!grupo) return;
   alumnoBox.classList.add('hidden');
   alumnoSel.disabled = true;
-
   const lista = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : [];
   limpiar(alumnoSel); poblar(alumnoSel, lista);
   alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
@@ -597,7 +563,7 @@ btnFlush.addEventListener('click', async ()=>{
   }
 });
 
-/* ======= Panel: vista previa por grupo ======= */
+/* ======= Vista previa por grupo ======= */
 function buildAdminGroups(){
   adminGrupoSel.innerHTML = '<option value="" disabled selected>Selecciona un grupo</option>';
   const grupos = Object.keys(ROSTER).sort((a,b)=>a.localeCompare(b,'es'));
@@ -624,19 +590,17 @@ function buildAdminGroups(){
   };
 }
 
-/* ======= SALIDAS: detectar "@salidas <clave>" y abrir modal ======= */
+/* ======= SALIDAS: detectar "@salidas <clave>" ======= */
 function extraerPwSalidas(texto){
   const m = /^@salidas\s+(.+)$/i.exec((texto||'').trim());
   return m ? m[1] : null;
 }
 function abrirSalidas(){
   salidasMsg.textContent = '';
-  // reset campos
-  salModalidad.value = '';
-  limpiar(salCursoSel); limpiar(salSistemaSel); limpiar(salAlumnoSel);
-  salCursoBox.classList.add('hidden'); salSistemaBox.classList.add('hidden'); salAlumnoBox.classList.add('hidden');
-  salCursoSel.disabled = salSistemaSel.disabled = salAlumnoSel.disabled = true;
   salMotivo.value = '';
+  salLines.innerHTML = '';
+  addSalidaLine(); // empezar con una línea
+  salResumen.textContent = '0 seleccionados';
   salidasOverlay.classList.remove('hidden');
   salidasOverlay.classList.add('flex');
 }
@@ -647,84 +611,170 @@ function cerrarSalidas(){
 salidasClose.addEventListener('click', cerrarSalidas);
 btnSalidaCancelar.addEventListener('click', cerrarSalidas);
 
-/* ======= Combos del panel de salidas ======= */
-function buildSalidasCombos(){
-  // Se alimentan dinámicamente cuando cambia la modalidad
-  salModalidad.onchange = ()=>{
-    limpiar(salCursoSel); limpiar(salSistemaSel); limpiar(salAlumnoSel);
-    salCursoBox.classList.add('hidden'); salSistemaBox.classList.add('hidden'); salAlumnoBox.classList.add('hidden');
-    salCursoSel.disabled = salSistemaSel.disabled = salAlumnoSel.disabled = true;
+/* ======= SALIDAS: líneas dinámicas ======= */
+function addSalidaLine(){
+  const div = document.createElement('div');
+  div.className = 'sal-line grid gap-2 border rounded-lg p-3';
 
-    if(salModalidad.value==='NACIONAL'){
-      poblar(salCursoSel, gruposNac); salCursoBox.classList.remove('hidden'); salCursoSel.disabled=false;
-    }
-    if(salModalidad.value==='INTERNACIONAL'){
-      poblar(salSistemaSel, gruposInt); salSistemaBox.classList.remove('hidden'); salSistemaSel.disabled=false;
-    }
+  div.innerHTML = `
+    <div>
+      <label class="block text-sm font-medium text-gray-600 mb-1 text-center">Modalidad</label>
+      <select class="sal-modalidad w-full rounded-lg border-gray-300 focus:border-brand p-3 text-center">
+        <option value="" disabled selected>SELECCIONA MODALIDAD</option>
+        <option value="NACIONAL">NACIONAL</option>
+        <option value="INTERNACIONAL">INTERNACIONAL</option>
+      </select>
+    </div>
+    <div class="sal-curso-box hidden">
+      <label class="block text-sm font-medium text-gray-600 mb-1 text-center">Curso o Grupo</label>
+      <select class="sal-curso w-full rounded-lg border-gray-300 focus:border-brand p-3 text-center" disabled>
+        <option value="" disabled selected>SELECCIONA TU CURSO</option>
+      </select>
+    </div>
+    <div class="sal-sistema-box hidden">
+      <label class="block text-sm font-medium text-gray-600 mb-1 text-center">Sistema educativo</label>
+      <select class="sal-sistema w-full rounded-lg border-gray-300 focus:border-brand p-3 text-center" disabled>
+        <option value="" disabled selected>SELECCIONA SISTEMA</option>
+      </select>
+    </div>
+    <div class="sal-alumno-box hidden">
+      <label class="block text-sm font-medium text-gray-600 mb-1 text-center">Alumno</label>
+      <select class="sal-alumno w-full rounded-lg border-gray-300 focus:border-brand p-3 text-center" disabled>
+        <option value="" disabled selected>SELECCIONA ALUMNO</option>
+      </select>
+    </div>
+    <div class="flex justify-end">
+      <button type="button" class="sal-quitar text-sm text-red-600 hover:text-red-700 px-2 py-1">Quitar</button>
+    </div>
+  `;
+
+  const selMod   = div.querySelector('.sal-modalidad');
+  const boxCurso = div.querySelector('.sal-curso-box');
+  const selCurso = div.querySelector('.sal-curso');
+  const boxSist  = div.querySelector('.sal-sistema-box');
+  const selSist  = div.querySelector('.sal-sistema');
+  const boxAlum  = div.querySelector('.sal-alumno-box');
+  const selAlum  = div.querySelector('.sal-alumno');
+  const btnQuit  = div.querySelector('.sal-quitar');
+
+  const updateResumen = ()=>{
+    const n = [...salLines.querySelectorAll('.sal-line')].filter(line=>{
+      const a = line.querySelector('.sal-alumno');
+      return a && a.value;
+    }).length;
+    salResumen.textContent = `${n} seleccionados`;
   };
-  salCursoSel.onchange   = ()=>{ cargarAlumnosSalidas(salCursoSel.value); };
-  salSistemaSel.onchange = ()=>{ cargarAlumnosSalidas(salSistemaSel.value); };
-}
-function cargarAlumnosSalidas(grupo){
-  if(!grupo) return;
-  salAlumnoBox.classList.add('hidden');
-  salAlumnoSel.disabled = true;
 
-  const lista = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : [];
-  limpiar(salAlumnoSel); poblar(salAlumnoSel, lista);
-  salAlumnoSel.disabled=false; salAlumnoBox.classList.remove('hidden');
-}
+  const limpiarSel = (sel)=>{ [...sel.options].slice(1).forEach(o=>o.remove()); };
 
-/* ======= Envío de SALIDA (usa /registro con RESPUESTA = "SALIDA: ...") ======= */
+  selMod.addEventListener('change', ()=>{
+    limpiarSel(selCurso); limpiarSel(selSist); limpiarSel(selAlum);
+    boxCurso.classList.add('hidden'); boxSist.classList.add('hidden'); boxAlum.classList.add('hidden');
+    selCurso.disabled = selSist.disabled = selAlum.disabled = true;
+
+    if(selMod.value==='NACIONAL'){
+      poblar(selCurso, gruposNac);
+      boxCurso.classList.remove('hidden');
+      selCurso.disabled=false;
+    }
+    if(selMod.value==='INTERNACIONAL'){
+      poblar(selSist, gruposInt);
+      boxSist.classList.remove('hidden');
+      selSist.disabled=false;
+    }
+    updateResumen();
+  });
+
+  selCurso.addEventListener('change', ()=>{
+    const lista = Array.isArray(ROSTER[selCurso.value]) ? ROSTER[selCurso.value] : [];
+    limpiarSel(selAlum); poblar(selAlum, lista);
+    selAlum.disabled=false; boxAlum.classList.remove('hidden');
+    updateResumen();
+  });
+  selSist.addEventListener('change', ()=>{
+    const lista = Array.isArray(ROSTER[selSist.value]) ? ROSTER[selSist.value] : [];
+    limpiarSel(selAlum); poblar(selAlum, lista);
+    selAlum.disabled=false; boxAlum.classList.remove('hidden');
+    updateResumen();
+  });
+  selAlum.addEventListener('change', updateResumen);
+
+  btnQuit.addEventListener('click', ()=>{
+    div.remove();
+    updateResumen();
+  });
+
+  salLines.appendChild(div);
+  return div;
+}
+btnSalidaAdd.addEventListener('click', ()=> addSalidaLine());
+
+/* ======= Envío de SALIDAS (lote) ======= */
+function geoOk(){ return lat.value!=='' && lon.value!==''; }
+
 btnSalidaEnviar.addEventListener('click', async ()=>{
-  const mod = salModalidad.value;
-  const grp = (mod==='NACIONAL') ? salCursoSel.value : salSistemaSel.value;
-  const alm = salAlumnoSel.value;
-  const mot = (salMotivo.value||'').trim();
-
-  if(!mod || !grp || !alm){ salidasMsg.textContent = 'Completa modalidad, grupo y alumno.'; return; }
-  if(mot.length < 3){ salidasMsg.textContent = 'Describe brevemente el motivo (mín. 3 caracteres).'; return; }
+  const motivo = (salMotivo.value||'').trim();
+  if(motivo.length < 3){ salidasMsg.textContent = 'Describe brevemente el motivo (mín. 3 caracteres).'; return; }
   if(!geoOk()){ showToast('Necesitamos tu ubicación', 'err'); return; }
 
+  // Construir lote (modalidad, grupo, alumno)
+  const lines = [...salLines.querySelectorAll('.sal-line')];
+  const items = [];
+  const seen = new Set();
+
+  for(const line of lines){
+    const mod = line.querySelector('.sal-modalidad').value;
+    const g1  = line.querySelector('.sal-curso').value;
+    const g2  = line.querySelector('.sal-sistema').value;
+    const grp = (mod==='NACIONAL') ? g1 : (mod==='INTERNACIONAL' ? g2 : '');
+    const alm = line.querySelector('.sal-alumno').value;
+    if(mod && grp && alm){
+      const key = `${mod}|${grp}|${alm}`;
+      if(!seen.has(key)){ seen.add(key); items.push({ mod, grp, alm }); }
+    }
+  }
+
+  if(!items.length){ salidasMsg.textContent = 'Añade al menos un alumno completo.'; return; }
+
+  // Enviar secuencialmente con uuid único para evitar rate-limit por duplicado
   btnSalidaEnviar.disabled=true;
   btnSalidaEnviar.classList.add('opacity-60','cursor-not-allowed');
   btnSalidaEnviar.textContent='Enviando…';
+  salidasMsg.textContent = `Enviando ${items.length} salida(s)...`;
 
-  const payload = {
-    modalidad: mod,
-    curso    : (mod==='NACIONAL') ? grp : '',
-    sistema  : (mod==='INTERNACIONAL') ? grp : '',
-    alumno   : alm,
-    respuesta: 'SALIDA: ' + mot,     // <- clave
-    ua       : ua.value,
-    ip       : ip.value,
-    lat      : lat.value,
-    lon      : lon.value,
-    uuid     : uuid.value,
-    finger   : finger.value
-  };
-
-  try{
-    const r = await apiPOST('/registro', payload);
-    if(r && r.status==='OK'){
-      showToast('Salida registrada', 'ok');
-      addAdminLog(`Salida: ${alm} (${grp})`);
-      cerrarSalidas();
-    }else{
-      showToast('Error: '+(r && r.error ? r.error : 'desconocido'), 'err');
-    }
-  }catch{
-    showToast('Error de red', 'err');
-  }finally{
-    btnSalidaEnviar.disabled=false;
-    btnSalidaEnviar.classList.remove('opacity-60','cursor-not-allowed');
-    btnSalidaEnviar.textContent='Enviar salida';
+  let ok=0, fail=0;
+  for(let i=0;i<items.length;i++){
+    const it = items[i];
+    const payload = {
+      modalidad: it.mod,
+      curso    : (it.mod==='NACIONAL') ? it.grp : '',
+      sistema  : (it.mod==='INTERNACIONAL') ? it.grp : '',
+      alumno   : it.alm,
+      respuesta: 'SALIDA: ' + motivo,
+      ua       : ua.value,
+      ip       : ip.value,
+      lat      : lat.value,
+      lon      : lon.value,
+      uuid     : (uuid.value || 'uuid') + '-batch-' + Date.now() + '-' + i + '-' + Math.random().toString(36).slice(2,6),
+      finger   : finger.value
+    };
+    try{
+      const r = await apiPOST('/registro', payload);
+      if(r && r.status==='OK') ok++; else fail++;
+    }catch{ fail++; }
   }
+
+  salidasMsg.textContent = `Resultado: ${ok} OK · ${fail} errores`;
+  showToast(`Salidas: ${ok} OK · ${fail} err`, fail? 'err':'ok');
+
+  btnSalidaEnviar.disabled=false;
+  btnSalidaEnviar.classList.remove('opacity-60','cursor-not-allowed');
+  btnSalidaEnviar.textContent='Enviar salidas';
+
+  if(fail===0){ cerrarSalidas(); }
 });
 
 /* ======= Envío principal ======= */
-function geoOk(){ return lat.value!=='' && lon.value!==''; }
-
 form.addEventListener('submit', async e=>{
   e.preventDefault();
 
@@ -736,10 +786,8 @@ form.addEventListener('submit', async e=>{
     respuesta.value = '';
     return;
   }
-
   const maybeSalidas = extraerPwSalidas(respuesta.value);
   if (maybeSalidas){
-    // Usa la misma clave que admin (solo gating local)
     setAdminPw(maybeSalidas);
     addAdminLog('Abriste panel de salidas');
     abrirSalidas();
@@ -776,10 +824,9 @@ form.addEventListener('submit', async e=>{
       showToast('Fichaje registrado', 'ok');
     }else{
       const msg = (r && r.error) ? r.error : 'desconocido';
-      // Si es “Duplicado reciente…”, muestra cuenta atrás
       const m = /Duplicado reciente/i.exec(msg);
       if (m){
-        let s = 8; // valor orientativo del backend
+        let s = 8;
         const timer = setInterval(()=>{
           btnEnviar.textContent = `Espera ${s}s…`;
           if(--s<=0){ clearInterval(timer); desbloquea(); }
@@ -795,7 +842,6 @@ form.addEventListener('submit', async e=>{
     desbloquea();
   }
 });
-
 function desbloquea(){
   btnEnviar.disabled=false; btnEnviar.classList.remove('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Enviar asistencia';
 }
@@ -829,7 +875,6 @@ window.addEventListener('load', async ()=>{
       .then(r=>finger.value=r.visitorId.slice(0,8)).catch(()=>{});
   }
 
-  // Recuperar sesión admin (si no caducó)
   const saved = getSavedAdminPw();
   if (saved) { ADMIN_PW = saved; addAdminLog('Sesión admin restaurada'); }
 });
