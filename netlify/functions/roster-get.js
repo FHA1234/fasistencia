@@ -1,18 +1,28 @@
+// netlify/functions/roster-get.js
 const { resp, gsGet } = require('./_fetch');
 
 exports.handler = async () => {
   try {
-    // 1) Lee de Netlify Blobs (import dinámico para ESM)
     let data = null;
+
+    // 1) Intentar leer desde Netlify Blobs (modo manual con siteID + token)
     try {
       const { getStore } = await import('@netlify/blobs');
-      const store = getStore('roster');
-      data = await store.get('roster.json', { type: 'json' });
+      const siteID = process.env.NETLIFY_SITE_ID;
+      const token  = process.env.NETLIFY_API_TOKEN;
+
+      if (siteID && token) {
+        const store = getStore('roster', { siteID, token });
+        data = await store.get('roster.json', { type: 'json' });
+      } else {
+        console.log('blobs manual not configured (missing NETLIFY_SITE_ID or NETLIFY_API_TOKEN)');
+      }
     } catch (e) {
-      console.log('blobs not available:', e.message);
+      console.log('blobs read error:', e.message);
     }
 
-    if (data) {
+    // 2) Si hay byGroup completo, devolverlo (rápido)
+    if (data && data.byGroup && Object.keys(data.byGroup).length) {
       return {
         statusCode: 200,
         headers: {
@@ -23,7 +33,7 @@ exports.handler = async () => {
       };
     }
 
-    // 2) Fallback rápido: solo grupos desde Apps Script
+    // 3) Fallback: solo listas de grupos (el front pedirá /alumnos por grupo)
     const g = await gsGet({ action: 'grupos' });
     const out = {
       byGroup: {},
@@ -33,7 +43,11 @@ exports.handler = async () => {
       updatedAt: new Date().toISOString()
     };
 
-    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(out) };
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(out)
+    };
   } catch (e) {
     console.error('roster-get error:', e);
     return resp(502, { error: 'BACKEND_UNAVAILABLE' });
