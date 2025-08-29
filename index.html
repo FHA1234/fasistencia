@@ -18,6 +18,13 @@
            class="mx-auto h-20 w-auto" alt="Logo Marcet">
       <h2 class="text-2xl font-bold text-center text-gray-800">Fichaje de Asistencia</h2>
 
+      <!-- Aviso (sin roster) -->
+      <div id="aviso" class="hidden text-sm rounded-lg p-3 bg-yellow-50 text-yellow-700 border border-yellow-200">
+        La lista de alumnos no está disponible todavía. Pide a un responsable escribir
+        <span class="font-mono bg-yellow-100 px-1 rounded">@admin &lt;clave&gt;</span> en “Respuesta presencial”
+        para actualizarla.
+      </div>
+
       <!-- ============ FORMULARIO ============ -->
       <form id="form" class="space-y-4">
         <!-- Modalidad -->
@@ -58,11 +65,11 @@
           </select>
         </div>
 
-        <!-- Palabra clave -->
+        <!-- Palabra clave / admin -->
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Respuesta presencial</label>
           <input id="respuesta" name="respuesta" required
-                 placeholder="Palabra clave del día"
+                 placeholder="Palabra clave del día (o @admin &lt;clave&gt;)"
                  class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
         </div>
 
@@ -120,6 +127,7 @@ async function apiPOST(path, body){
 }
 
 /* ======= DOM ======= */
+const aviso      = document.getElementById('aviso');
 const modalidadSel = document.getElementById('modalidad');
 const cursoBox   = document.getElementById('cursoBox');
 const cursoSel   = document.getElementById('curso');
@@ -140,80 +148,71 @@ const finger     = document.getElementById('finger');
 const limpiar = sel => [...sel.options].slice(1).forEach(o=>o.remove());
 const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 
-/* ======= ROSTER en memoria + caché ======= */
+/* ======= ROSTER en memoria ======= */
 let ROSTER = {};                // { GRUPO: [alumnos] }
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV6'; // bump de versión
 
 /* --- Normalizador robusto --- */
 function normalizaRoster(raw){
   const isObj = raw && typeof raw === 'object';
   const hasByGroup = isObj && raw.byGroup && typeof raw.byGroup === 'object';
   const hasLists   = isObj && (Array.isArray(raw.nacionales) || Array.isArray(raw.internacionales));
+  const out = { byGroup:{}, nacionales:[], internacionales:[], version:Date.now(), updatedAt:new Date().toISOString(), error:raw?.error };
 
   if (hasByGroup) {
-    return {
-      byGroup: raw.byGroup || {},
-      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : Object.keys(raw.byGroup||{}).sort(),
-      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
-      version: raw.version || Date.now(),
-      updatedAt: raw.updatedAt || new Date().toISOString()
-    };
+    out.byGroup = raw.byGroup || {};
+    out.nacionales = Array.isArray(raw.nacionales) ? raw.nacionales : Object.keys(out.byGroup).sort();
+    out.internacionales = Array.isArray(raw.internacionales) ? raw.internacionales : [];
+    out.version = raw.version || out.version;
+    out.updatedAt = raw.updatedAt || out.updatedAt;
+    out.error = raw.error;
+    return out;
   }
   if (hasLists) {
-    return {
-      byGroup: {},
-      nacionales: Array.isArray(raw.nacionales) ? raw.nacionales : [],
-      internacionales: Array.isArray(raw.internacionales) ? raw.internacionales : [],
-      version: raw.version || Date.now(),
-      updatedAt: raw.updatedAt || new Date().toISOString()
-    };
+    out.nacionales = Array.isArray(raw.nacionales) ? raw.nacionales : [];
+    out.internacionales = Array.isArray(raw.internacionales) ? raw.internacionales : [];
+    out.version = raw.version || out.version;
+    out.updatedAt = raw.updatedAt || out.updatedAt;
+    return out;
   }
-  if (isObj) {
-    const values = Object.values(raw);
-    if (values.length && values.every(v => Array.isArray(v))) {
-      return {
-        byGroup: raw,
-        nacionales: Object.keys(raw).sort(),
-        internacionales: [],
-        version: Date.now(),
-        updatedAt: new Date().toISOString()
-      };
-    }
-  }
-  return { byGroup:{}, nacionales:[], internacionales:[], version:Date.now(), updatedAt:new Date().toISOString() };
+  return out;
 }
 
 function usarRoster(info){
   ROSTER    = info.byGroup || {};
   gruposNac = info.nacionales || [];
   gruposInt = info.internacionales || [];
-  modalidadSel.disabled = false;
 
   const span = document.getElementById('rosterInfo');
   if (span && info.updatedAt) span.textContent = `v${info.version} · ${new Date(info.updatedAt).toLocaleString('es-ES')}`;
+
+  const tieneAlumnos = ROSTER && Object.keys(ROSTER).length > 0;
+
+  // Mostrar/ocultar aviso
+  aviso.classList.toggle('hidden', tieneAlumnos);
+
+  // Habilitar combos solo si hay alumnos
+  modalidadSel.disabled = !tieneAlumnos;
+  cursoSel.disabled = true; sistemaSel.disabled = true; alumnoSel.disabled = true;
+
+  // Limpiar selects dependientes
+  limpiar(cursoSel); limpiar(sistemaSel); limpiar(alumnoSel);
+  cursoBox.classList.add('hidden'); sistemaBox.classList.add('hidden'); alumnoBox.classList.add('hidden');
 }
 
-/* carga con caché local (opcional) + lectura desde roster-get (CDN) */
-function cargarGrupos(){
+/* ======= Cargar grupos SIEMPRE fresco (sin caché) ======= */
+async function cargarGrupos(){
   try{
-    const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
-    if (cached && cached.data) usarRoster(normalizaRoster(cached.data));
-  }catch{}
-
-  apiGET('/roster-get')
-    .then(raw=>{
-      const info = normalizaRoster(raw);
-      usarRoster(info);
-      localStorage.setItem(LS_KEY, JSON.stringify({ savedAt: Date.now(), data: info }));
-    })
-    .catch(()=>{
-      if (!Object.keys(ROSTER).length) alert('Backend no accesible');
-      modalidadSel.disabled = false;
-    });
+    const raw  = await apiGET('/roster-get?ts=' + Date.now());
+    const info = normalizaRoster(raw);
+    usarRoster(info);
+  }catch(e){
+    alert('Backend no accesible'); console.error(e);
+    usarRoster({ byGroup:{}, nacionales:[], internacionales:[] });
+  }
 }
 
-/* ======= Combos dependientes ======= */
+/* ======= Combos dependientes (solo desde ROSTER) ======= */
 modalidadSel.addEventListener('change',()=>{
   limpiar(cursoSel); limpiar(sistemaSel); limpiar(alumnoSel);
   cursoBox.classList.add('hidden'); sistemaBox.classList.add('hidden'); alumnoBox.classList.add('hidden');
@@ -229,47 +228,20 @@ modalidadSel.addEventListener('change',()=>{
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
-/* ======= Aceleración alumnos: usa ROSTER si está; si no, plan B por red ======= */
-let alumnosAbort = null;
-function setLoadingAlumnos(){
-  limpiar(alumnoSel);
-  const opt = new Option('Cargando…','');
-  opt.disabled = true; opt.selected = true;
-  alumnoSel.add(opt);
-}
-
-async function cargarAlumnos(grupo){
+function cargarAlumnos(grupo){
   if(!grupo) return;
   alumnoBox.classList.add('hidden');
   alumnoSel.disabled = true;
 
-  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
-  if (precargado && precargado.length){
-    limpiar(alumnoSel); poblar(alumnoSel, precargado);
-    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-    return;
-  }
-
-  setLoadingAlumnos();
-  if (alumnosAbort) alumnosAbort.abort();
-  alumnosAbort = new AbortController();
-
-  try{
-    const arr = await apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`, { signal: alumnosAbort.signal });
-    limpiar(alumnoSel); poblar(alumnoSel, Array.isArray(arr)?arr:[]);
-  }catch(e){
-    if (!(e && e.name === 'AbortError')) {
-      limpiar(alumnoSel);
-    }
-  }finally{
-    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
-  }
+  const lista = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : [];
+  limpiar(alumnoSel); poblar(alumnoSel, lista);
+  alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
 }
 
 /* ======= Admin: SOLO con "@admin <clave>" ======= */
 function extraerPwAdmin(texto){
   const m = /^@admin\s+(.+)$/i.exec((texto||'').trim());
-  return m ? m[1].trim() : null; // ← recortamos aquí también
+  return m ? m[1] : null;
 }
 
 /* ======= Envío ======= */
@@ -279,35 +251,20 @@ form.addEventListener('submit', async e=>{
   e.preventDefault();
 
   // ¿Admin?
-  const adminPwRaw = extraerPwAdmin(respuesta.value);
-  if (adminPwRaw){
-    const adminPw = adminPwRaw.trim();
+  const adminPw = extraerPwAdmin(respuesta.value);
+  if (adminPw){
     try{
-      btnEnviar.disabled=true;
-      btnEnviar.classList.add('opacity-60','cursor-not-allowed');
-      btnEnviar.textContent='Actualizando…';
-
-      // Llamada directa para poder leer status y error del servidor
-      const res = await fetch('/.netlify/functions/roster-flush', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ pw: adminPw })
-      });
-
-      const text = await res.text(); let data;
-      try { data = JSON.parse(text); } catch { data = null; }
-
-      if(!res.ok){
-        alert(`Admin falló (${res.status}): ${data?.error || text || 'sin detalle'}`);
-        return;
-      }
-      if(data && data.status === 'OK'){
-        alert('Lista actualizada');
-        try { localStorage.removeItem(LS_KEY); } catch {}
+      btnEnviar.disabled=true; btnEnviar.classList.add('opacity-60','cursor-not-allowed'); btnEnviar.textContent='Actualizando…';
+      const r = await apiPOST('/roster-flush', { pw: adminPw });
+      if (r && r.status === 'OK'){
+        // Leer de nuevo el roster FRESCO
+        const raw  = await apiGET('/roster-get?ts=' + Date.now());
+        const info = normalizaRoster(raw);
+        usarRoster(info);
         respuesta.value = '';
-        cargarGrupos(); // vuelve a leer roster-get ya regenerado
+        alert('Lista actualizada');
       }else{
-        alert(`Admin: ${data?.error || 'respuesta inválida'}`);
+        alert('No autorizado');
       }
     }catch{ alert('Error de red'); }
     finally{ desbloquea(); }
@@ -383,4 +340,3 @@ document.getElementById('cerrar').addEventListener('click',()=>{
 </script>
 </body>
 </html>
-
