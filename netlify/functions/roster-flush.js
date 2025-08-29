@@ -41,20 +41,18 @@ exports.handler = async (event) => {
       updatedAt: new Date().toISOString()
     };
 
-    // 3) escribir en Blobs con siteID + token (modo manual)
+    // 3) escribir en Blobs (modo manual: objeto con name/siteID/token)
     try {
       const { getStore } = await import('@netlify/blobs');
-
       const siteID = (process.env.NETLIFY_SITE_ID || '').trim();
       const token  = (process.env.NETLIFY_API_TOKEN || '').trim();
 
-      // Diagnóstico si faltan
       if (!siteID || !token) {
         console.error('BLOBS_NOT_CONFIGURED', { hasSite: !!siteID, hasToken: !!token });
         return resp(500, { error: 'BLOBS_NOT_CONFIGURED' });
       }
 
-      const store = getStore('roster', { siteID, token });
+      const store = getStore({ name: 'roster', siteID, token });   // ← CORRECTO
       await store.set('roster.json', JSON.stringify(roster), {
         metadata: { updatedAt: roster.updatedAt, version: String(roster.version) }
       });
