@@ -22,13 +22,13 @@ exports.handler = async (event) => {
     const { pw = '' } = JSON.parse(event.body || '{}');
     if (!ADMIN_PASSWORD || pw !== ADMIN_PASSWORD) return resp(403, { error: 'FORBIDDEN' });
 
-    // 1) Obtener listas de grupos
+    // 1) grupos
     const g = await gsGet({ action: 'grupos' });
     const nacionales = Array.isArray(g.nacionales) ? g.nacionales : [];
     const internacionales = Array.isArray(g.internacionales) ? g.internacionales : [];
     const allGroups = [...nacionales, ...internacionales];
 
-    // 2) Construir byGroup pidiendo alumnos en paralelo (límite 6)
+    // 2) alumnos por grupo (paralelo con límite)
     const pairs = await withLimit(allGroups, 6, async (grupo) => {
       const arr = await gsGet({ action: 'alumnos', grupo });
       return [grupo, Array.isArray(arr) ? arr : []];
@@ -41,14 +41,16 @@ exports.handler = async (event) => {
       updatedAt: new Date().toISOString()
     };
 
-    // 3) Guardar en Netlify Blobs (modo manual con siteID + token)
+    // 3) escribir en Blobs con siteID + token (modo manual)
     try {
       const { getStore } = await import('@netlify/blobs');
-      const siteID = process.env.NETLIFY_SITE_ID;
-      const token  = process.env.NETLIFY_API_TOKEN;
 
+      const siteID = (process.env.NETLIFY_SITE_ID || '').trim();
+      const token  = (process.env.NETLIFY_API_TOKEN || '').trim();
+
+      // Diagnóstico si faltan
       if (!siteID || !token) {
-        console.log('blobs manual not configured (missing NETLIFY_SITE_ID or NETLIFY_API_TOKEN)');
+        console.error('BLOBS_NOT_CONFIGURED', { hasSite: !!siteID, hasToken: !!token });
         return resp(500, { error: 'BLOBS_NOT_CONFIGURED' });
       }
 
@@ -56,12 +58,12 @@ exports.handler = async (event) => {
       await store.set('roster.json', JSON.stringify(roster), {
         metadata: { updatedAt: roster.updatedAt, version: String(roster.version) }
       });
+
+      return resp(200, { status: 'OK', version: roster.version, grupos: allGroups.length });
     } catch (e) {
       console.error('roster-flush write error:', e);
       return resp(502, { error: 'BLOBS_WRITE_FAILED' });
     }
-
-    return resp(200, { status:'OK', version: roster.version, grupos: allGroups.length });
   } catch (e) {
     console.error('roster-flush error:', e);
     return resp(502, { error: 'BACKEND_UNAVAILABLE' });
