@@ -20,9 +20,7 @@
 
       <!-- Aviso (sin roster) -->
       <div id="aviso" class="hidden text-sm rounded-lg p-3 bg-yellow-50 text-yellow-700 border border-yellow-200">
-        La lista de alumnos no está disponible todavía. Pide a un responsable escribir
-        <span class="font-mono bg-yellow-100 px-1 rounded">@admin &lt;clave&gt;</span> en “Respuesta presencial”
-        para actualizarla.
+        La lista de alumnos no está disponible todavía. Pide a un responsable actualizarla.
       </div>
 
       <!-- ============ FORMULARIO ============ -->
@@ -65,11 +63,11 @@
           </select>
         </div>
 
-        <!-- Palabra clave / admin -->
+        <!-- Palabra clave -->
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Respuesta presencial</label>
           <input id="respuesta" name="respuesta" required
-                 placeholder="Palabra clave del día (o @admin &lt;clave&gt;)"
+                 placeholder="Palabra clave del día"
                  class="w-full rounded-lg border-gray-300 focus:border-brand p-3">
         </div>
 
@@ -238,7 +236,7 @@ function cargarAlumnos(grupo){
   alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
 }
 
-/* ======= Admin: SOLO con "@admin <clave>" ======= */
+/* ======= Admin oculto: "@admin <clave>" ======= */
 function extraerPwAdmin(texto){
   const m = /^@admin\s+(.+)$/i.exec((texto||'').trim());
   return m ? m[1] : null;
