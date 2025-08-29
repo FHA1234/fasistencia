@@ -143,7 +143,7 @@ const poblar  = (sel,arr)=>arr.forEach(v=>sel.add(new Option(v,v)));
 /* ======= ROSTER en memoria + caché ======= */
 let ROSTER = {};                // { GRUPO: [alumnos] }
 let gruposNac = [], gruposInt = [];
-const LS_KEY = 'rosterCacheV5'; // bump de versión
+const LS_KEY = 'rosterCacheV6'; // bump de versión
 
 /* --- Normalizador robusto --- */
 function normalizaRoster(raw){
@@ -231,15 +231,43 @@ modalidadSel.addEventListener('change',()=>{
 cursoSel.addEventListener('change', ()=> cargarAlumnos(cursoSel.value));
 sistemaSel.addEventListener('change', ()=> cargarAlumnos(sistemaSel.value));
 
-/* ======= Cargar alumnos desde ROSTER (sin red) ======= */
-function cargarAlumnos(grupo){
+/* ======= Aceleración alumnos: ROSTER si existe, si no plan B por red ======= */
+let alumnosAbort = null;
+function setLoadingAlumnos(){
+  limpiar(alumnoSel);
+  const opt = new Option('Cargando…','');
+  opt.disabled = true; opt.selected = true;
+  alumnoSel.add(opt);
+}
+
+async function cargarAlumnos(grupo){
   if(!grupo) return;
   alumnoBox.classList.add('hidden');
   alumnoSel.disabled = true;
 
-  const lista = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : [];
-  limpiar(alumnoSel); poblar(alumnoSel, lista);
-  alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+  // 1) Si ya vino precargado en ROSTER (tras @admin), instantáneo
+  const precargado = Array.isArray(ROSTER[grupo]) ? ROSTER[grupo] : null;
+  if (precargado && precargado.length){
+    limpiar(alumnoSel); poblar(alumnoSel, precargado);
+    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+    return;
+  }
+
+  // 2) Plan B: pedir solo ese grupo (rápido) a la función /alumnos
+  setLoadingAlumnos();
+  if (alumnosAbort) alumnosAbort.abort();
+  alumnosAbort = new AbortController();
+
+  try{
+    const arr = await apiGET(`/alumnos?grupo=${encodeURIComponent(grupo)}`, { signal: alumnosAbort.signal });
+    limpiar(alumnoSel); poblar(alumnoSel, Array.isArray(arr)?arr:[]);
+  }catch(e){
+    if (!(e && e.name === 'AbortError')) {
+      limpiar(alumnoSel); // deja el select limpio ante error
+    }
+  }finally{
+    alumnoSel.disabled=false; alumnoBox.classList.remove('hidden');
+  }
 }
 
 /* ======= Admin: SOLO con "@admin <clave>" ======= */
@@ -342,4 +370,5 @@ document.getElementById('cerrar').addEventListener('click',()=>{
 </script>
 </body>
 </html>
+
 
